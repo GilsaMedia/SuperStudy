@@ -1,38 +1,84 @@
-.App {
-  text-align: center;
-}
-
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
+.Welcome {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #0f172a 0%, #0b1024 100%);
+  color: #e5e7eb;
+}
+
+.Welcome-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 24px;
+}
+
+.Welcome-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.Welcome-logo { width: 28px; height: 28px; }
+.Welcome-title { font-size: 18px; font-weight: 700; }
+
+.Welcome-main {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  padding: 24px;
+  text-align: center;
 }
 
-.App-link {
-  color: #61dafb;
+.Welcome-headline {
+  font-size: 34px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: #ffffff;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.Welcome-subtitle { margin-top: 8px; color: #cbd5e1; }
+
+.Welcome-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.Button {
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  text-decoration: none;
+  color: #e5e7eb;
+  border: 1px solid rgba(229,231,235,0.2);
+  background: rgba(255,255,255,0.06);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.Button:hover {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(229,231,235,0.35);
+}
+
+.Button--primary { background: #4f46e5; border-color: #4f46e5; color: #ffffff; }
+.Button--primary:hover { background: #635bff; border-color: #635bff; }
+.Button--secondary { background: rgba(255,255,255,0.06); }
+
+.Welcome-footer {
+  margin-top: auto;
+  padding: 24px;
+  text-align: center;
+  color: #94a3b8;
+}
+
+.Welcome-link { color: #cbd5e1; text-decoration: underline; }
+
+@media (max-width: 600px) {
+  .Welcome-headline { font-size: 28px; }
 }

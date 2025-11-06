@@ -1,25 +1,26 @@
 import React from 'react';
-import logo from './logo.svg';
 import './App.css';
+import { Routes, Route } from 'react-router-dom';
+import AuthGate from './pages/AuthGate';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import { FirebaseAuthProvider, ProtectedRoute } from './context/FirebaseAuth';
+import Navbar from './components/Navbar';
+import Home from './pages/Home';
+import StudentHelp from './pages/StudentHelp';
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <FirebaseAuthProvider>
+      <Navbar />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/auth" element={<AuthGate />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/help" element={<ProtectedRoute><StudentHelp /></ProtectedRoute>} />
+      </Routes>
+    </FirebaseAuthProvider>
   );
 }
 
