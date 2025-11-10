@@ -4,10 +4,16 @@ import { Routes, Route } from 'react-router-dom';
 import AuthGate from './pages/AuthGate';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
-import { FirebaseAuthProvider, ProtectedRoute } from './context/FirebaseAuth';
+import { FirebaseAuthProvider, ProtectedRoute, StudentRoute } from './context/FirebaseAuth';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
 import StudentHelp from './pages/StudentHelp';
+import TeacherLayout from './pages/teacher/TeacherLayout';
+import TeacherStudents from './pages/teacher/TeacherStudents';
+import TeacherProfile from './pages/teacher/TeacherProfile';
+import { Navigate } from 'react-router-dom';
+import StudentDashboard from './pages/student/StudentDashboard';
+import StudentFindTeachers from './pages/student/StudentFindTeachers';
 
 function App() {
   return (
@@ -18,7 +24,14 @@ function App() {
         <Route path="/auth" element={<AuthGate />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
-        <Route path="/help" element={<ProtectedRoute><StudentHelp /></ProtectedRoute>} />
+        <Route path="/help" element={<StudentHelp />} />
+        <Route path="/student-dashboard" element={<StudentRoute><StudentDashboard /></StudentRoute>} />
+        <Route path="/student/teachers" element={<StudentRoute><StudentFindTeachers /></StudentRoute>} />
+        <Route path="/teacher" element={<TeacherLayout />}>
+          <Route index element={<Navigate to="/teacher/students" replace />} />
+          <Route path="students" element={<TeacherStudents />} />
+          <Route path="profile" element={<TeacherProfile />} />
+        </Route>
       </Routes>
     </FirebaseAuthProvider>
   );

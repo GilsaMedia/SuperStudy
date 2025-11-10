@@ -1,11 +1,33 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import logo from '../logo.svg';
 import '../App.css';
 import { useFirebaseAuth } from '../context/FirebaseAuth';
+import TeacherDashboard from './teacher/TeacherDashboard';
+import TeacherLayout from './teacher/TeacherLayout';
 
 export default function Home() {
-  const { user } = useFirebaseAuth();
+  const { user, profile, loading } = useFirebaseAuth();
+  const navigate = useNavigate();
+
+  React.useEffect(() => {
+    if (loading) return;
+    if (profile?.role === 'student') {
+      navigate('/student-dashboard', { replace: true });
+    }
+  }, [profile, loading, navigate]);
+
+  if (loading) {
+    return null;
+  }
+
+  if (profile?.role === 'teacher') {
+    return (
+      <TeacherLayout>
+        <TeacherDashboard profileOverride={profile} />
+      </TeacherLayout>
+    );
+  }
 
   const displayName = user?.displayName || user?.email || undefined;
 
