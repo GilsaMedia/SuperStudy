@@ -56,20 +56,20 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
         return;
       }
 
+      let cacheApplied = false;
       // Load cached profile immediately if available (helps offline scenarios)
-      if (!profile) {
-        try {
-          const cached = window.localStorage.getItem(PROFILE_CACHE_KEY);
-          if (cached) {
-            const parsed: UserProfile = JSON.parse(cached);
-            if (parsed?.uid === user.uid) {
-              setProfile(parsed);
-            }
+      try {
+        const cached = window.localStorage.getItem(PROFILE_CACHE_KEY);
+        if (cached) {
+          const parsed: UserProfile = JSON.parse(cached);
+          if (parsed?.uid === user.uid) {
+            setProfile(parsed);
+            cacheApplied = true;
           }
-        } catch {}
-      }
+        }
+      } catch {}
 
-      setProfileLoading(true);
+      setProfileLoading(!cacheApplied);
       try {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         if (userDoc.exists()) {

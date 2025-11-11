@@ -126,132 +126,49 @@ Remember: Your job is to TEACH, not to SOLVE. Guide them to discover the answer 
 const agent = new StudyTutorAgent();
 
 async function getAiReply(messages: ChatMessage[]): Promise<string> {
-  const groqKey = process.env.REACT_APP_GROQ_API_KEY;
-  const openaiKey = process.env.REACT_APP_OPENAI_API_KEY;
-
-  // Prioritize Groq (free and fast), then OpenAI, then fallback
-  if (groqKey) {
-    return getGroqReply(messages);
-  } else if (openaiKey) {
-    return getOpenAiReply(messages);
-  } else {
-    return getFallbackAgentReply(messages);
+  const geminiKey = process.env.REACT_APP_GEMINI_API_KEY;
+  if (!geminiKey) {
+    throw new Error('Gemini API key missing. Set REACT_APP_GEMINI_API_KEY in your environment.');
   }
+  return getGeminiReply(messages, geminiKey);
 }
 
-// OpenAI API call
-async function getOpenAiReply(messages: ChatMessage[]): Promise<string> {
-  const apiKey = process.env.REACT_APP_OPENAI_API_KEY;
-  if (!apiKey) throw new Error('OpenAI API key not found');
-
-  // Enhanced system prompt from agent
+// Gemini API call (primary provider)
+async function getGeminiReply(messages: ChatMessage[], apiKey: string): Promise<string> {
   const systemPrompt = agent.generateSystemPrompt(messages);
-  const enhancedMessages: ChatMessage[] = [
-    { role: 'system', content: systemPrompt },
-    ...messages.filter((m) => m.role !== 'system'),
-  ];
-
-  const MAX_MESSAGES = 20;
-  const trimmedHistory = enhancedMessages.slice(-MAX_MESSAGES);
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: trimmedHistory,
-      temperature: 0.3,
-      max_tokens: 400,
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(text || `OpenAI API error: ${response.status}`);
-  }
-
-  const json = await response.json();
-  const content: string | undefined = json?.choices?.[0]?.message?.content;
-  return content || 'Sorry — I could not generate a response.';
-}
-
-// Groq API call - Primary AI provider
-async function getGroqReply(messages: ChatMessage[]): Promise<string> {
-  const apiKey = process.env.REACT_APP_GROQ_API_KEY;
-  if (!apiKey) {
-    throw new Error('Groq API key not found. Please add REACT_APP_GROQ_API_KEY to your .env file');
-  }
-
-  // Generate enhanced system prompt from agent
-  const systemPrompt = agent.generateSystemPrompt(messages);
-  
-  // Build message array with system prompt and conversation history
-  // Filter out any existing system messages and add our enhanced one
   const conversationMessages = messages.filter((m) => m.role !== 'system');
-  const enhancedMessages: ChatMessage[] = [
-    { role: 'system', content: systemPrompt },
-    ...conversationMessages,
-  ];
+  const contents = conversationMessages.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
 
-  // Keep last 16 messages to stay within token limits while maintaining context
-  const MAX_MESSAGES = 16;
-  const trimmedHistory = enhancedMessages.slice(-MAX_MESSAGES);
-
-  try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+    {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'llama-3.1-8b-instant', // Free and fast model
-        messages: trimmedHistory,
-        temperature: 0.3, // Lower temperature for more focused, educational responses
-        max_tokens: 400, // Limit response length to keep it concise
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents,
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 400,
+        },
       }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      console.error('Groq API error:', response.status, errorText);
-      throw new Error(`Groq API error (${response.status}): ${errorText || 'Unknown error'}`);
     }
+  );
 
-    const json = await response.json();
-    const content: string | undefined = json?.choices?.[0]?.message?.content;
-    
-    if (!content) {
-      throw new Error('No content received from Groq API');
-    }
-
-    return content;
-  } catch (error) {
-    console.error('Error calling Groq API:', error);
-    throw error;
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(text || `Gemini API error: ${response.status}`);
   }
-}
 
-// Fallback agent with rule-based logic
-async function getFallbackAgentReply(messages: ChatMessage[]): Promise<string> {
-  const lastUserMsg = messages.filter((m) => m.role === 'user').pop()?.content || '';
-  const analysis = agent.analyzeQuestion(lastUserMsg);
-  const hintsGiven = messages.filter((m) => m.role === 'assistant').length;
-
-  // Progressive hint system
-  const hints = [
-    `Let's break down this ${analysis.topic} problem. What information do you already know?`,
-    `Think about the key concepts in ${analysis.topic}. What formula or method might apply here?`,
-    `Try working backwards. What would the answer look like?`,
-    `Can you identify what you're trying to find? What are the given values?`,
-    `Consider breaking this into smaller steps. What's the first thing you need to do?`,
-  ];
-
-  const hintIndex = Math.min(hintsGiven, hints.length - 1);
-  return hints[hintIndex] || "I'm here to guide you. What specific part are you stuck on?";
+  const json = await response.json();
+  const content: string | undefined = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!content) throw new Error('No content received from Gemini API');
+  return content;
 }
 
 export default function StudentHelp() {
@@ -297,18 +214,6 @@ export default function StudentHelp() {
       // Log agent reasoning for debugging
       const reasoning = await agent.getAgentReasoning(nextMessages);
       console.log('🤖 Agent Analysis:', reasoning);
-      
-      // Check which provider will be used
-      const groqKey = process.env.REACT_APP_GROQ_API_KEY;
-      const openaiKey = process.env.REACT_APP_OPENAI_API_KEY;
-      if (groqKey) {
-        console.log('✅ Using Groq AI');
-      } else if (openaiKey) {
-        console.log('✅ Using OpenAI');
-      } else {
-        console.log('⚠️ Using fallback (no API keys found)');
-      }
-
       const reply = await getAiReply(nextMessages);
       setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
     } catch (err) {
@@ -316,9 +221,9 @@ export default function StudentHelp() {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setMessages((prev) => [
         ...prev,
-        { 
-          role: 'assistant', 
-          content: `There was a problem contacting the AI: ${errorMessage}. Please check your API key in the .env file and make sure REACT_APP_GROQ_API_KEY is set correctly.` 
+        {
+          role: 'assistant',
+          content: `There was a problem contacting the AI: ${errorMessage}. Please check your Gemini API key (REACT_APP_GEMINI_API_KEY) and try again.`
         },
       ]);
     } finally {

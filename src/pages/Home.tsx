@@ -29,6 +29,35 @@ export default function Home() {
     );
   }
 
+  if (user && !profile?.role) {
+    return (
+      <div className="Welcome">
+        <header className="Welcome-header">
+          <div className="Welcome-brand">
+            <img src={logo} alt="App logo" className="Welcome-logo" />
+            <span className="Welcome-title">SuperStudy</span>
+          </div>
+        </header>
+
+        <main className="Welcome-main">
+          <h1 className="Welcome-headline">Role Required</h1>
+          <p className="Welcome-subtitle" style={{ maxWidth: 520 }}>
+            Your account needs to be set up as a student or a teacher before you can use SuperStudy.
+            Please contact support or sign up again with the correct role.
+          </p>
+          <div className="Welcome-actions">
+            <Link className="Button Button--primary" to="/signup">Create a role-specific account</Link>
+            <Link className="Button Button--secondary" to="/login">Switch account</Link>
+          </div>
+        </main>
+
+        <footer className="Welcome-footer">
+          <span>Need help? Reach out to our support team.</span>
+        </footer>
+      </div>
+    );
+  }
+
   const displayName = user?.displayName || user?.email || undefined;
 
   return (
