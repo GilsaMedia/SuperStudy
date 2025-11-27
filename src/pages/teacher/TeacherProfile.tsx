@@ -23,6 +23,9 @@ export default function TeacherProfile() {
     { label: 'Units', value: profile.points || 'Not set' },
     { label: 'Location', value: profile.location || 'Not set' },
   ];
+  
+  // Rules field (if it exists in profile)
+  const rules = (profile as any).rules;
 
   return (
     <div>
@@ -40,6 +43,17 @@ export default function TeacherProfile() {
             </div>
           ))}
         </div>
+
+        {rules && (
+          <div style={{ marginTop: 24, padding: 16, borderRadius: 8, background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.15)' }}>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              📋 Rules
+            </div>
+            <div style={{ color: '#cbd5f5', fontSize: 14, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+              {rules}
+            </div>
+          </div>
+        )}
 
         <button
           type="button"

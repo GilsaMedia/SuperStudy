@@ -74,6 +74,8 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         if (userDoc.exists()) {
           const data = userDoc.data();
+          // eslint-disable-next-line no-console
+          console.log('[FirebaseAuth] Loaded profile from Firestore:', { uid: user.uid, role: data.role, data });
           if (active) {
             setProfile({
               uid: user.uid,
@@ -100,6 +102,8 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
             } catch {}
           }
         } else if (active) {
+          // eslint-disable-next-line no-console
+          console.warn('[FirebaseAuth] User document does not exist in Firestore:', user.uid);
           setProfile(null);
           try {
             window.localStorage.removeItem(PROFILE_CACHE_KEY);

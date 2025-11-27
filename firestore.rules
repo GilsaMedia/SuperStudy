@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users collection
+    match /users/{userId} {
+      // Allow users to read any user profile (needed for finding teachers)
+      allow read: if request.auth != null;
+      
+      // Allow users to create/update their own profile
+      // This is needed during signup when the user is authenticated
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Students collection - allows teachers to add students
+    match /students/{studentId} {
+      // Allow authenticated users to read students (needed for queries)
+      allow read: if request.auth != null;
+      
+      // Allow teachers to create student documents linked to them
+      // Ensure teacherId matches the authenticated user's UID
+      allow create: if request.auth != null && 
+        request.data.teacherId == request.auth.uid &&
+        request.data.userId != null;
+      
+      // Allow teachers to update their own student documents
+      allow update: if request.auth != null && 
+        resource.data.teacherId == request.auth.uid &&
+        request.data.teacherId == request.auth.uid;
+      
+      // Allow teachers to delete their own student documents
+      allow delete: if request.auth != null && 
+        resource.data.teacherId == request.auth.uid;
+    }
+    
+    // Default deny all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

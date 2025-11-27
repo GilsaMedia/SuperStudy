@@ -18,7 +18,13 @@ export default function Home() {
   }, [profile, loading, navigate]);
 
   if (loading) {
-    return null;
+    return (
+      <div className="Welcome">
+        <div className="Welcome-main">
+          <p>Loading your profile...</p>
+        </div>
+      </div>
+    );
   }
 
   if (profile?.role === 'teacher') {
@@ -30,6 +36,12 @@ export default function Home() {
   }
 
   if (user && !profile?.role) {
+    // eslint-disable-next-line no-console
+    console.log('[Home] User authenticated but no role found:', { 
+      userId: user.uid, 
+      profile, 
+      hasProfile: !!profile 
+    });
     return (
       <div className="Welcome">
         <header className="Welcome-header">
@@ -46,7 +58,16 @@ export default function Home() {
             Please contact support or sign up again with the correct role.
           </p>
           <div className="Welcome-actions">
-            <Link className="Button Button--primary" to="/signup">Create a role-specific account</Link>
+            <button 
+              className="Button Button--primary" 
+              onClick={() => {
+                // Force refresh the profile
+                window.location.reload();
+              }}
+            >
+              Refresh Profile
+            </button>
+            <Link className="Button Button--secondary" to="/signup">Create a role-specific account</Link>
             <Link className="Button Button--secondary" to="/login">Switch account</Link>
           </div>
         </main>

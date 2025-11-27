@@ -15,7 +15,14 @@ function mapAuthError(err: FirebaseAuthError): string {
       return 'Invalid email address.';
     case 'auth/weak-password':
       return 'Password is too weak.';
+    case 'permission-denied':
+    case 'PERMISSION_DENIED':
+      return 'Permission denied. Please check your Firestore security rules.';
     default:
+      // Show more detailed error if available
+      if (err.message) {
+        return `Signup failed: ${err.message}`;
+      }
       return 'Unable to sign up. Please try again.';
   }
 }
@@ -26,6 +33,7 @@ export default function Signup() {
   const [fullName, setFullName] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [confirm, setConfirm] = React.useState('');
+  const [phone, setPhone] = React.useState('');
   const [selectedRole, setSelectedRole] = React.useState<'teacher' | 'student' | null>(null);
   const [teacherSubject, setTeacherSubject] = React.useState('Math');
   const [teacherPoints, setTeacherPoints] = React.useState('5');
@@ -34,13 +42,7 @@ export default function Signup() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isGoogleBusy, setIsGoogleBusy] = React.useState(false);
 
-  const goToDashboard = (role: 'teacher' | 'student') => {
-    if (role === 'teacher') {
-      navigate('/', { replace: true });
-    } else {
-      navigate('/student-dashboard', { replace: true });
-    }
-  };
+  const goHome = () => navigate('/', { replace: true });
 
   function withTimeout<T>(p: Promise<T>, ms = 15000): Promise<T> {
     return new Promise((resolve, reject) => {
@@ -60,9 +62,23 @@ export default function Signup() {
       setError('Please enter full name, email and password.');
       return;
     }
-    if (selectedRole === 'teacher' && !teacherLocation) {
-      setError('Please provide your teaching location.');
-      return;
+    if (selectedRole === 'teacher') {
+      if (!teacherLocation || !teacherLocation.trim()) {
+        setError('Please provide your teaching location (city).');
+        return;
+      }
+      if (!teacherSubject || !teacherSubject.trim()) {
+        setError('Please select a subject.');
+        return;
+      }
+      if (!teacherPoints || !teacherPoints.trim()) {
+        setError('Please select points/units.');
+        return;
+      }
+      if (!phone || !phone.trim()) {
+        setError('Please provide your phone number.');
+        return;
+      }
     }
     if (password !== confirm) {
       setError('Passwords do not match.');
@@ -81,7 +97,7 @@ export default function Signup() {
 
       // 3) Save comprehensive (non-sensitive) user profile in Firestore
       const providerId = cred.user.providerData?.[0]?.providerId || 'password';
-      await withTimeout(setDoc(doc(db, 'users', cred.user.uid), {
+      const userData = {
         uid: cred.user.uid,
         email: cred.user.email,
         fullName,
@@ -90,6 +106,7 @@ export default function Signup() {
         updatedAt: serverTimestamp(),
         emailVerified: cred.user.emailVerified,
         providerId,
+        phone: phone || null,
         subject: selectedRole === 'teacher' ? teacherSubject : null,
         points: selectedRole === 'teacher' ? teacherPoints : null,
         location: selectedRole === 'teacher' ? teacherLocation : null,
@@ -104,14 +121,24 @@ export default function Signup() {
           onboardingComplete: false,
           theme: 'dark',
         },
-      }, { merge: true }));
+      };
+      // eslint-disable-next-line no-console
+      console.log('[Signup] Saving user profile to Firestore:', { uid: cred.user.uid, role: selectedRole, userData });
+      await withTimeout(setDoc(doc(db, 'users', cred.user.uid), userData, { merge: true }));
+      // eslint-disable-next-line no-console
+      console.log('[Signup] User profile saved successfully');
 
-      // 4) Send user to the relevant dashboard
-      goToDashboard(selectedRole);
+      // 4) Send user to home
+      goHome();
     } catch (e: any) {
       // eslint-disable-next-line no-console
       console.error('signup error:', e);
-      setError(mapAuthError(e));
+      // Check if it's a Firestore permission error
+      if (e?.code === 'permission-denied' || e?.code === 'PERMISSION_DENIED') {
+        setError('Permission denied. Please check your Firestore security rules allow users to create their profile.');
+      } else {
+        setError(mapAuthError(e));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -125,6 +152,28 @@ export default function Signup() {
       if (!selectedRole) {
         throw new Error('role-missing');
       }
+      if (selectedRole === 'teacher') {
+        if (!teacherLocation || !teacherLocation.trim()) {
+          setError('Please provide your teaching location (city).');
+          setIsGoogleBusy(false);
+          return;
+        }
+        if (!teacherSubject || !teacherSubject.trim()) {
+          setError('Please select a subject.');
+          setIsGoogleBusy(false);
+          return;
+        }
+        if (!teacherPoints || !teacherPoints.trim()) {
+          setError('Please select points/units.');
+          setIsGoogleBusy(false);
+          return;
+        }
+        if (!phone || !phone.trim()) {
+          setError('Please provide your phone number.');
+          setIsGoogleBusy(false);
+          return;
+        }
+      }
       const provider = new GoogleAuthProvider();
       const cred = await signInWithPopup(auth, provider);
       const providerId = cred.user.providerData?.[0]?.providerId || 'google.com';
@@ -137,6 +186,7 @@ export default function Signup() {
         updatedAt: serverTimestamp(),
         emailVerified: cred.user.emailVerified,
         providerId,
+        phone: phone || null,
         subject: selectedRole === 'teacher' ? teacherSubject : null,
         points: selectedRole === 'teacher' ? teacherPoints : null,
         location: selectedRole === 'teacher' ? teacherLocation : null,
@@ -152,12 +202,14 @@ export default function Signup() {
           theme: 'dark',
         },
       }, { merge: true });
-      goToDashboard(selectedRole);
+      goHome();
     } catch (e: any) {
       // eslint-disable-next-line no-console
       console.error('google signup error:', e);
       if (e?.message === 'role-missing') {
         setError('Please choose Teacher or Student before signing up with Google.');
+      } else if (e?.code === 'permission-denied' || e?.code === 'PERMISSION_DENIED') {
+        setError('Permission denied. Please check your Firestore security rules allow users to create their profile.');
       } else {
         setError('Google signup failed. Please try again.');
       }
@@ -221,7 +273,7 @@ export default function Signup() {
         </select>
       </div>
 
-      <label className="input-label">Location</label>
+      <label className="input-label">Location <span style={{ color: '#fca5a5' }}>*</span></label>
       <div className="input-group">
         <span className="input-icon">📍</span>
         <input
@@ -230,6 +282,7 @@ export default function Signup() {
           value={teacherLocation}
           onChange={(e) => setTeacherLocation(e.target.value)}
           className="input-field"
+          required={selectedRole === 'teacher'}
         />
       </div>
     </>
@@ -296,6 +349,25 @@ export default function Signup() {
               className="input-field"
             />
           </div>
+
+          <label className="input-label">
+            Phone Number {selectedRole === 'teacher' && <span style={{ color: '#fca5a5' }}>*</span>}
+            {selectedRole !== 'teacher' && <span style={{ color: '#94a3b8', fontSize: 12, fontWeight: 'normal' }}> (optional)</span>}
+          </label>
+          <div className="input-group">
+            <span className="input-icon">📞</span>
+            <input
+              type="tel"
+              placeholder="+1234567890"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="input-field"
+              required={selectedRole === 'teacher'}
+            />
+          </div>
+          <small style={{ color: '#94a3b8', fontSize: 12, marginTop: 4, marginBottom: 8, display: 'block' }}>
+            Include country code (e.g., +1 for US, +44 for UK)
+          </small>
 
           {teacherExtraFields}
 
