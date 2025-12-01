@@ -1,5 +1,5 @@
 import React from 'react';
-import { collection, onSnapshot, query, where, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, getDocs, getDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useFirebaseAuth } from '../../context/FirebaseAuth';
 
@@ -27,7 +27,10 @@ export default function TeacherStudents() {
   React.useEffect(() => {
     if (!profile?.uid) return;
 
-    const q = query(collection(db, 'students'), where('teacherId', '==', profile.uid));
+    // Listen to this teacher's students in their own subcollection:
+    // /users/{teacherId}/students/{studentId}
+    const studentsRef = collection(db, 'users', profile.uid, 'students');
+    const q = query(studentsRef);
     const unsub = onSnapshot(
       q,
       (snapshot) => {
@@ -138,14 +141,9 @@ export default function TeacherStudents() {
       }
 
       // Check if student is already added
-      const existingQuery = query(
-        collection(db, 'students'),
-        where('teacherId', '==', profile.uid),
-        where('userId', '==', studentUser.id)
-      );
-      const existingSnapshot = await getDocs(existingQuery);
-      
-      if (!existingSnapshot.empty) {
+      const existingRef = doc(db, 'users', profile.uid, 'students', studentUser.id);
+      const existingSnapshot = await getDoc(existingRef);
+      if (existingSnapshot.exists()) {
         setError('This student is already in your list.');
         return;
       }
@@ -164,9 +162,10 @@ export default function TeacherStudents() {
       // eslint-disable-next-line no-console
       console.log('[AddStudent] Creating student document:', { teacherId: profile.uid, userId: studentUser.id, studentData });
 
-      // Add student to students collection
-      const studentRef = doc(collection(db, 'students'));
-      await setDoc(studentRef, studentData);
+      // Add/merge student into this teacher's students subcollection
+      // Path: /users/{teacherId}/students/{studentUser.id}
+      const studentRef = doc(db, 'users', profile.uid, 'students', studentUser.id);
+      await setDoc(studentRef, studentData, { merge: true });
 
       // eslint-disable-next-line no-console
       console.log('[AddStudent] Student document created successfully');

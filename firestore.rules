@@ -13,27 +13,12 @@ service cloud.firestore {
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
     
-    // Students collection - allows teachers to add students
-    match /students/{studentId} {
-      // Allow authenticated users to read students (needed for queries)
-      allow read: if request.auth != null;
-      
-      // Allow teachers to create student documents linked to them
-      // Ensure teacherId matches the authenticated user's UID
-      allow create: if request.auth != null && 
-        request.data.teacherId == request.auth.uid &&
-        request.data.userId != null;
-      
-      // Allow teachers to update their own student documents
-      allow update: if request.auth != null && 
-        resource.data.teacherId == request.auth.uid &&
-        request.data.teacherId == request.auth.uid;
-      
-      // Allow teachers to delete their own student documents
-      allow delete: if request.auth != null && 
-        resource.data.teacherId == request.auth.uid;
+    // Each teacher manages their own students subcollection:
+    // /users/{userId}/students/{studentId}
+    match /users/{userId}/students/{studentId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-    
+
     // Default deny all other collections
     match /{document=**} {
       allow read, write: if false;

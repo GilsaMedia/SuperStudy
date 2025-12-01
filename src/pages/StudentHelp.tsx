@@ -3,7 +3,17 @@ import { Link } from 'react-router-dom';
 import './student-help.css';
 import { useFirebaseAuth } from '../context/FirebaseAuth';
 
-type ChatMessage = { role: 'user' | 'assistant' | 'system'; content: string };
+type ImageDataPart = {
+  mimeType: string;
+  /** Base64 (no data: prefix) */
+  data: string;
+};
+
+type ChatMessage = {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  imageData?: ImageDataPart | null;
+};
 type AgentState = {
   studentLevel: 'beginner' | 'intermediate' | 'advanced';
   currentTopic: string | null;
@@ -137,13 +147,46 @@ async function getAiReply(messages: ChatMessage[]): Promise<string> {
 async function getGeminiReply(messages: ChatMessage[], apiKey: string): Promise<string> {
   const systemPrompt = agent.generateSystemPrompt(messages);
   const conversationMessages = messages.filter((m) => m.role !== 'system');
-  const contents = conversationMessages.map((m) => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
+  const contents = conversationMessages.map((m) => {
+    const parts: Array<
+      | {
+          text: string;
+        }
+      | {
+          inlineData: {
+            mimeType: string;
+            data: string;
+          };
+        }
+    > = [];
+
+    const trimmedContent = m.content.trim();
+    if (trimmedContent) {
+      parts.push({ text: trimmedContent });
+    }
+
+    if (m.imageData) {
+      parts.push({
+        inlineData: {
+          mimeType: m.imageData.mimeType,
+          data: m.imageData.data,
+        },
+      });
+    }
+
+    return {
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts,
+    };
+  });
+
+  // Use a single known-good model + version that your key has access to.
+  // From your account's model list: "name": "models/gemini-2.5-flash-lite"
+  const model = 'gemini-2.5-flash-lite';
+  const version = 'v1';
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: {
@@ -162,7 +205,12 @@ async function getGeminiReply(messages: ChatMessage[], apiKey: string): Promise<
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new Error(text || `Gemini API error: ${response.status}`);
+    throw new Error(
+      text ||
+        `Gemini API error: ${response.status}. Tried ${version}/models/${model}. ` +
+        'Make sure this model exists for your key by calling: ' +
+        'curl "https://generativelanguage.googleapis.com/v1/models?key=YOUR_API_KEY"'
+    );
   }
 
   const json = await response.json();
@@ -182,6 +230,13 @@ export default function StudentHelp() {
   ]);
   const [sending, setSending] = React.useState(false);
   const [showAgentThinking, setShowAgentThinking] = React.useState(false);
+  const [attachedImage, setAttachedImage] = React.useState<{
+    file: File;
+    previewUrl: string;
+    mimeType: string;
+    base64Data: string | null;
+  } | null>(null);
+  const [imageError, setImageError] = React.useState<string | null>(null);
   const [accessError, setAccessError] = React.useState<string | null>(null);
   const listRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -196,17 +251,86 @@ export default function StudentHelp() {
     }
   }, [user]);
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setAttachedImage(null);
+      setImageError(null);
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setImageError('Please select an image file.');
+      setAttachedImage(null);
+      return;
+    }
+
+    const maxBytes = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxBytes) {
+      setImageError('Image is too large. Please select an image under 5MB.');
+      setAttachedImage(null);
+      return;
+    }
+
+    setImageError(null);
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result;
+      if (typeof result !== 'string') {
+        setImageError('Could not read image. Please try a different file.');
+        setAttachedImage(null);
+        return;
+      }
+
+      const commaIndex = result.indexOf(',');
+      const base64 = commaIndex >= 0 ? result.substring(commaIndex + 1) : result;
+
+      const previewUrl = URL.createObjectURL(file);
+
+      setAttachedImage({
+        file,
+        previewUrl,
+        mimeType: file.type || 'image/*',
+        base64Data: base64,
+      });
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  const clearAttachedImage = () => {
+    if (attachedImage?.previewUrl) {
+      URL.revokeObjectURL(attachedImage.previewUrl);
+    }
+    setAttachedImage(null);
+    setImageError(null);
+  };
+
   const send = async () => {
     const trimmed = input.trim();
-    if (!trimmed || sending) return;
+    const hasImage = !!attachedImage?.base64Data;
+    if ((!trimmed && !hasImage) || sending) return;
     if (!user) {
       setAccessError('Study Helper is available once you log in. Please log in or sign up to continue.');
       return;
     }
-    
-    const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: trimmed }];
+
+    const userMessage: ChatMessage = {
+      role: 'user',
+      content: trimmed || (hasImage ? '[Image question]' : ''),
+      imageData: hasImage
+        ? {
+            mimeType: attachedImage!.mimeType,
+            data: attachedImage!.base64Data as string,
+          }
+        : undefined,
+    };
+
+    const nextMessages: ChatMessage[] = [...messages, userMessage];
     setMessages(nextMessages);
     setInput('');
+    clearAttachedImage();
     setSending(true);
     setShowAgentThinking(true);
 
@@ -296,7 +420,23 @@ export default function StudentHelp() {
                 minWidth: 72,
                 color: 'var(--text-dim, #9aa0a6)'
               }}>{m.role === 'user' ? 'You' : 'Tutor'}</div>
-              <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+              <div style={{ whiteSpace: 'pre-wrap' }}>
+                {m.content}
+                {m.imageData && (
+                  <div style={{ marginTop: 8 }}>
+                    <img
+                      src={`data:${m.imageData.mimeType};base64,${m.imageData.data}`}
+                      alt="Uploaded study problem"
+                      style={{
+                        maxWidth: '260px',
+                        maxHeight: '260px',
+                        borderRadius: 8,
+                        border: '1px solid rgba(148,163,184,0.35)',
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           ))}
           {showAgentThinking && (
@@ -327,7 +467,7 @@ export default function StudentHelp() {
           <textarea
             id="q"
             className="help__textarea"
-            placeholder="e.g., Solve: 2x + 5 = 17. Show each step."
+            placeholder="e.g., Solve: 2x + 5 = 17. Show each step. You can also attach a photo of the problem below."
             value={input}
             onChange={(e) => setInput(e.target.value)}
             rows={4}
@@ -335,11 +475,117 @@ export default function StudentHelp() {
             style={{ opacity: !user ? 0.6 : 1 }}
           />
 
+          <div
+            className="help__image-tools"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              marginTop: 8,
+              marginBottom: 4,
+              flexWrap: 'wrap',
+            }}
+          >
+            <label
+              className="help__btn help__btn--ghost"
+              style={{
+                cursor: !user || sending ? 'not-allowed' : 'pointer',
+                opacity: !user || sending ? 0.6 : 1,
+                marginBottom: 0,
+              }}
+            >
+              Photo (take or upload)
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleImageChange}
+                disabled={!user || sending}
+                style={{ display: 'none' }}
+              />
+            </label>
+
+            {attachedImage && (
+              <div
+                className="help__image-preview"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'rgba(15,23,42,0.6)',
+                  borderRadius: 8,
+                  padding: '6px 8px',
+                  border: '1px solid rgba(148,163,184,0.45)',
+                }}
+              >
+                <img
+                  src={attachedImage.previewUrl}
+                  alt={attachedImage.file.name || 'Selected problem image'}
+                  style={{
+                    width: 48,
+                    height: 48,
+                    objectFit: 'cover',
+                    borderRadius: 6,
+                  }}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: '#e5e7eb',
+                      maxWidth: 180,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {attachedImage.file.name || 'Problem image'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={clearAttachedImage}
+                    className="help__btn"
+                    style={{
+                      padding: '2px 8px',
+                      fontSize: 11,
+                      alignSelf: 'flex-start',
+                      marginTop: 2,
+                    }}
+                    disabled={sending}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          {imageError && (
+            <p
+              className="help__note"
+              style={{ color: '#fca5a5', marginTop: 0, marginBottom: 4 }}
+            >
+              {imageError}
+            </p>
+          )}
+
           <div className="help__actions">
-            <button type="submit" disabled={sending || !input.trim() || !user} className="help__btn help__btn--primary">
+            <button
+              type="submit"
+              disabled={sending || (!input.trim() && !attachedImage?.base64Data) || !user}
+              className="help__btn help__btn--primary"
+            >
               {sending ? 'Thinking…' : 'Send'}
             </button>
-            <button type="button" className="help__btn" onClick={() => setInput('')}>Clear</button>
+            <button
+              type="button"
+              className="help__btn"
+              onClick={() => {
+                setInput('');
+                clearAttachedImage();
+              }}
+            >
+              Clear
+            </button>
             <button type="button" className="help__btn" onClick={resetChat}>New Chat</button>
           </div>
 

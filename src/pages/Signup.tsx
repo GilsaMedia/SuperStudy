@@ -62,6 +62,11 @@ export default function Signup() {
       setError('Please enter full name, email and password.');
       return;
     }
+    // Require phone number for both teachers and students
+    if (!phone || !phone.trim()) {
+      setError('Please provide your phone number.');
+      return;
+    }
     if (selectedRole === 'teacher') {
       if (!teacherLocation || !teacherLocation.trim()) {
         setError('Please provide your teaching location (city).');
@@ -73,10 +78,6 @@ export default function Signup() {
       }
       if (!teacherPoints || !teacherPoints.trim()) {
         setError('Please select points/units.');
-        return;
-      }
-      if (!phone || !phone.trim()) {
-        setError('Please provide your phone number.');
         return;
       }
     }
@@ -151,6 +152,12 @@ export default function Signup() {
     try {
       if (!selectedRole) {
         throw new Error('role-missing');
+      }
+      // Require phone for both teachers and students on Google signup
+      if (!phone || !phone.trim()) {
+        setError('Please provide your phone number.');
+        setIsGoogleBusy(false);
+        return;
       }
       if (selectedRole === 'teacher') {
         if (!teacherLocation || !teacherLocation.trim()) {
