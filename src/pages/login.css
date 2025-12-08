@@ -133,3 +133,20 @@
   color: #9ca3af;
   text-align: center;
 }
+
+@media (max-width: 600px) {
+  .login-page {
+    padding: 16px;
+    align-items: flex-start;
+  }
+
+  .login-card {
+    padding: 20px;
+    border-radius: 14px;
+  }
+
+  .login-title {
+    font-size: 22px;
+  }
+}
+

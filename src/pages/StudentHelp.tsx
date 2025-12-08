@@ -147,6 +147,8 @@ async function getAiReply(messages: ChatMessage[]): Promise<string> {
 async function getGeminiReply(messages: ChatMessage[], apiKey: string): Promise<string> {
   const systemPrompt = agent.generateSystemPrompt(messages);
   const conversationMessages = messages.filter((m) => m.role !== 'system');
+  
+  // Map messages to Gemini format
   const contents = conversationMessages.map((m) => {
     const parts: Array<
       | {
@@ -180,6 +182,26 @@ async function getGeminiReply(messages: ChatMessage[], apiKey: string): Promise<
     };
   });
 
+  // Prepend system instruction as the first message since gemini-2.5-flash-lite
+  // doesn't support systemInstruction field
+  if (contents.length > 0 && contents[0].role === 'user') {
+    // Prepend system prompt to the first user message
+    const firstUserMessage = contents[0];
+    if (firstUserMessage.parts.length > 0 && firstUserMessage.parts[0] && 'text' in firstUserMessage.parts[0]) {
+      // Prepend system instruction to the first user message text
+      firstUserMessage.parts[0].text = `${systemPrompt}\n\nUser question: ${firstUserMessage.parts[0].text}`;
+    } else {
+      // If first message has no text part, add system prompt as first part
+      firstUserMessage.parts.unshift({ text: systemPrompt });
+    }
+  } else {
+    // If no user message yet, prepend system instruction as first message
+    contents.unshift({
+      role: 'user',
+      parts: [{ text: systemPrompt }],
+    });
+  }
+
   // Use a single known-good model + version that your key has access to.
   // From your account's model list: "name": "models/gemini-2.5-flash-lite"
   const model = 'gemini-2.5-flash-lite';
@@ -193,7 +215,6 @@ async function getGeminiReply(messages: ChatMessage[], apiKey: string): Promise<
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
         contents,
         generationConfig: {
           temperature: 0.3,
