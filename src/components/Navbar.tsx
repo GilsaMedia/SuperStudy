@@ -79,12 +79,20 @@ export default function Navbar() {
             )}
             <Link to="/help" className={`nav__link${isActive('/help') ? ' nav__link--active' : ''}`}>Study Helper</Link>
             {isStudent && (
-              <Link
-                to="/student/teachers"
-                className={`nav__link${location.pathname.startsWith('/student/teachers') ? ' nav__link--active' : ''}`}
-              >
-                Find Teachers
-              </Link>
+              <>
+                <Link
+                  to="/student/teachers"
+                  className={`nav__link${location.pathname.startsWith('/student/teachers') && !location.pathname.startsWith('/student/my-teachers') ? ' nav__link--active' : ''}`}
+                >
+                  Find Teachers
+                </Link>
+                <Link
+                  to="/student/my-teachers"
+                  className={`nav__link${location.pathname.startsWith('/student/my-teachers') ? ' nav__link--active' : ''}`}
+                >
+                  My Teachers
+                </Link>
+              </>
             )}
             {user ? (
               <>
@@ -111,6 +119,7 @@ export default function Navbar() {
                         <>
                           <Link to="/student-dashboard" className="nav__dropdownItem">Student Dashboard</Link>
                           <Link to="/student/teachers" className="nav__dropdownItem">Find Teachers</Link>
+                          <Link to="/student/my-teachers" className="nav__dropdownItem">My Teachers</Link>
                           <div className="nav__dropdownDivider" />
                         </>
                       )}
@@ -187,13 +196,22 @@ export default function Navbar() {
               Study Helper
             </Link>
             {isStudent && (
-              <Link
-                to="/student/teachers"
-                className={`nav__mobile-link${location.pathname.startsWith('/student/teachers') ? ' nav__mobile-link--active' : ''}`}
-                onClick={handleMobileLinkClick}
-              >
-                Find Teachers
-              </Link>
+              <>
+                <Link
+                  to="/student/teachers"
+                  className={`nav__mobile-link${location.pathname.startsWith('/student/teachers') && !location.pathname.startsWith('/student/my-teachers') ? ' nav__mobile-link--active' : ''}`}
+                  onClick={handleMobileLinkClick}
+                >
+                  Find Teachers
+                </Link>
+                <Link
+                  to="/student/my-teachers"
+                  className={`nav__mobile-link${location.pathname.startsWith('/student/my-teachers') ? ' nav__mobile-link--active' : ''}`}
+                  onClick={handleMobileLinkClick}
+                >
+                  My Teachers
+                </Link>
+              </>
             )}
             
             {user ? (
@@ -212,6 +230,7 @@ export default function Navbar() {
                   <>
                     <Link to="/student-dashboard" className="nav__mobile-link" onClick={handleMobileLinkClick}>Student Dashboard</Link>
                     <Link to="/student/teachers" className="nav__mobile-link" onClick={handleMobileLinkClick}>Find Teachers</Link>
+                    <Link to="/student/my-teachers" className="nav__mobile-link" onClick={handleMobileLinkClick}>My Teachers</Link>
                   </>
                 )}
                 <div className="nav__mobile-divider"></div>

@@ -1,5 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../../firebase';
+import { useFirebaseAuth } from '../../context/FirebaseAuth';
+import CitySelector from '../../components/CitySelector';
 
 type TeacherProfileContext = {
   profile: {
@@ -10,59 +14,262 @@ type TeacherProfileContext = {
     subject?: string;
     points?: string;
     location?: string;
-  };
+    rules?: string;
+  } | null;
 };
 
 export default function TeacherProfile() {
-  const { profile } = useOutletContext<TeacherProfileContext>();
+  const { profile: outletProfile } = useOutletContext<TeacherProfileContext>();
+  const { user, profile: authProfile, refreshProfile } = useFirebaseAuth();
+  const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  // Use outlet profile if available, otherwise fallback to auth profile
+  const profile = outletProfile || authProfile;
+
+  const [formData, setFormData] = useState({
+    fullName: profile?.fullName || '',
+    subject: profile?.subject || '',
+    points: profile?.points || '',
+    location: profile?.location || '',
+    rules: profile?.rules || '',
+  });
+
+  // Update form data when profile changes
+  useEffect(() => {
+    if (profile) {
+      setFormData({
+        fullName: profile.fullName || '',
+        subject: profile.subject || '',
+        points: profile.points || '',
+        location: profile.location || '',
+        rules: profile.rules || '',
+      });
+    }
+  }, [profile]);
+
+  if (!profile) {
+    return (
+      <div>
+        <h1 style={{ fontSize: 26, color: '#ffffff', marginBottom: 12 }}>Your Profile</h1>
+        <p style={{ color: '#cbd5f5', marginBottom: 20 }}>Loading profile...</p>
+      </div>
+    );
+  }
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    setError(null);
+    setSuccess(false);
+  };
+
+  const handleSave = async () => {
+    if (!user) {
+      setError('You must be logged in to update your profile.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(false);
+
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        fullName: formData.fullName.trim() || null,
+        subject: formData.subject.trim() || null,
+        points: formData.points.trim() || null,
+        location: formData.location.trim() || null,
+        rules: formData.rules.trim() || null,
+      });
+
+      setSuccess(true);
+      setIsEditing(false);
+      
+      // Refresh the profile data
+      await refreshProfile();
+    } catch (err) {
+      console.error('Error updating profile:', err);
+      setError('Failed to update profile. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setFormData({
+      fullName: profile.fullName || '',
+      subject: profile.subject || '',
+      points: profile.points || '',
+      location: profile.location || '',
+      rules: (profile as any).rules || '',
+    });
+    setIsEditing(false);
+    setError(null);
+    setSuccess(false);
+  };
 
   const fields = [
-    { label: 'Name', value: profile.fullName || 'Not set' },
-    { label: 'Email', value: profile.email || 'Not set' },
-    { label: 'Subject', value: profile.subject || 'Not set' },
-    { label: 'Units', value: profile.points || 'Not set' },
-    { label: 'Location', value: profile.location || 'Not set' },
+    { label: 'Name', value: profile.fullName || 'Not set', key: 'fullName' },
+    { label: 'Email', value: profile.email || 'Not set', key: 'email', readOnly: true },
+    { label: 'Subject', value: profile.subject || 'Not set', key: 'subject' },
+    { label: 'Units', value: profile.points || 'Not set', key: 'points' },
+    { label: 'Location', value: profile.location || 'Not set', key: 'location' },
   ];
-  
-  // Rules field (if it exists in profile)
-  const rules = (profile as any).rules;
 
   return (
     <div>
       <h1 style={{ fontSize: 26, color: '#ffffff', marginBottom: 12 }}>Your Profile</h1>
       <p style={{ color: '#cbd5f5', marginBottom: 20 }}>
-        Review the information students see when they view your profile. Updates can be managed from this page in a future release.
+        {isEditing
+          ? 'Edit your profile information. Changes will be visible to students.'
+          : 'Review the information students see when they view your profile.'}
       </p>
 
-      <div className="TeacherProfile__section">
-        <div className="TeacherProfile__grid">
-          {fields.map((field) => (
-            <div key={field.label} className="TeacherProfile__item">
-              <span className="TeacherProfile__label">{field.label}</span>
-              <span className="TeacherProfile__value">{field.value}</span>
-            </div>
-          ))}
+      {error && (
+        <div
+          style={{
+            marginBottom: 20,
+            padding: 12,
+            borderRadius: 8,
+            background: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            color: '#fca5a5',
+            fontSize: 14,
+          }}
+        >
+          {error}
         </div>
+      )}
 
-        {rules && (
-          <div style={{ marginTop: 24, padding: 16, borderRadius: 8, background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.15)' }}>
-            <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              📋 Rules
+      {success && (
+        <div
+          style={{
+            marginBottom: 20,
+            padding: 12,
+            borderRadius: 8,
+            background: 'rgba(34, 197, 94, 0.1)',
+            border: '1px solid rgba(34, 197, 94, 0.3)',
+            color: '#86efac',
+            fontSize: 14,
+          }}
+        >
+          Profile updated successfully!
+        </div>
+      )}
+
+      <div className="TeacherProfile__section">
+        {isEditing ? (
+          <div>
+            <div className="TeacherProfile__grid">
+              {fields.map((field) => (
+                <div key={field.label} className="TeacherProfile__item">
+                  <label className="TeacherProfile__label" htmlFor={field.key}>
+                    {field.label}
+                  </label>
+                  {field.readOnly ? (
+                    <div className="TeacherProfile__value" style={{ opacity: 0.6 }}>
+                      {field.value}
+                    </div>
+                  ) : field.key === 'location' ? (
+                    <CitySelector
+                      value={formData.location}
+                      onChange={(value) => handleInputChange('location', value)}
+                      placeholder="Select a city"
+                      className="TeacherProfile__input"
+                    />
+                  ) : (
+                    <input
+                      id={field.key}
+                      type="text"
+                      value={formData[field.key as keyof typeof formData]}
+                      onChange={(e) => handleInputChange(field.key, e.target.value)}
+                      className="TeacherProfile__input"
+                      placeholder={`Enter ${field.label.toLowerCase()}`}
+                    />
+                  )}
+                </div>
+              ))}
             </div>
-            <div style={{ color: '#cbd5f5', fontSize: 14, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-              {rules}
+
+            <div style={{ marginTop: 24 }}>
+              <label className="TeacherProfile__label" htmlFor="rules" style={{ display: 'block', marginBottom: 8 }}>
+                📋 Rules
+              </label>
+              <textarea
+                id="rules"
+                value={formData.rules}
+                onChange={(e) => handleInputChange('rules', e.target.value)}
+                className="TeacherProfile__textarea"
+                placeholder="Enter your teaching rules and guidelines..."
+                rows={6}
+              />
+            </div>
+
+            <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleSave}
+                disabled={loading}
+                style={{
+                  background: loading ? '#4b5563' : '#3b82f6',
+                  color: '#ffffff',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.6 : 1,
+                }}
+              >
+                {loading ? 'Saving...' : 'Save Changes'}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleCancel}
+                disabled={loading}
+                style={{
+                  background: '#374151',
+                  color: '#ffffff',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
             </div>
           </div>
-        )}
+        ) : (
+          <>
+            <div className="TeacherProfile__grid">
+              {fields.map((field) => (
+                <div key={field.label} className="TeacherProfile__item">
+                  <span className="TeacherProfile__label">{field.label}</span>
+                  <span className="TeacherProfile__value">{field.value}</span>
+                </div>
+              ))}
+            </div>
 
-        <button
-          type="button"
-          className="btn"
-          style={{ marginTop: 20, background: '#374151', color: '#ffffff', cursor: 'not-allowed' }}
-          disabled
-        >
-          Edit profile (coming soon)
-        </button>
+            {formData.rules && (
+              <div style={{ marginTop: 24, padding: 16, borderRadius: 8, background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.15)' }}>
+                <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  📋 Rules
+                </div>
+                <div style={{ color: '#cbd5f5', fontSize: 14, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                  {formData.rules}
+                </div>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setIsEditing(true)}
+              style={{ marginTop: 20, background: '#3b82f6', color: '#ffffff', cursor: 'pointer' }}
+            >
+              Edit Profile
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

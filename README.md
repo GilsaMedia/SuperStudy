@@ -42,12 +42,41 @@ Super Study is an innovative web platform designed to help middle school and hig
    npm install
    ```
 
-3. **Start the development server**
+3. **Set up environment variables**
+   
+   Create a `.env.local` file in the root directory (this file is gitignored for security):
+   ```bash
+   # Copy the example file (if it exists) or create a new .env.local file
+   cp .env.example .env.local
+   ```
+   
+   Then edit `.env.local` and add your API keys:
+   ```env
+   # Firebase Configuration
+   REACT_APP_FIREBASE_API_KEY=your_firebase_api_key_here
+   REACT_APP_FIREBASE_AUTH_DOMAIN=your_project_id.firebaseapp.com
+   REACT_APP_FIREBASE_PROJECT_ID=your_project_id
+   REACT_APP_FIREBASE_STORAGE_BUCKET=your_project_id.appspot.com
+   REACT_APP_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
+   REACT_APP_FIREBASE_APP_ID=your_app_id
+
+   # Gemini API Configuration
+   # Get your API key from: https://makersuite.google.com/app/apikey
+   REACT_APP_GEMINI_API_KEY=your_gemini_api_key_here
+   ```
+   
+   **Important Notes:**
+   - The `.env.local` file is not tracked by git (for security)
+   - You'll need to recreate this file on each new machine
+   - After creating or modifying `.env.local`, you **must restart** the development server
+   - All environment variables must be prefixed with `REACT_APP_` to be accessible in the browser
+
+4. **Start the development server**
    ```bash
    npm start
    ```
 
-4. **Open your browser**
+5. **Open your browser**
    Navigate to `http://localhost:3000` to view the application.
 
 ### Available Scripts
@@ -223,10 +252,27 @@ npm run build
 ```
 
 ### Environment Variables
+
+Create a `.env.local` file in the root directory with the following variables:
+
 ```env
-REACT_APP_API_URL=http://localhost:3001/api
-REACT_APP_ENVIRONMENT=development
+# Firebase Configuration
+REACT_APP_FIREBASE_API_KEY=your_firebase_api_key_here
+REACT_APP_FIREBASE_AUTH_DOMAIN=your_project_id.firebaseapp.com
+REACT_APP_FIREBASE_PROJECT_ID=your_project_id
+REACT_APP_FIREBASE_STORAGE_BUCKET=your_project_id.appspot.com
+REACT_APP_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
+REACT_APP_FIREBASE_APP_ID=your_app_id
+
+# Gemini API Configuration
+# Get your API key from: https://makersuite.google.com/app/apikey
+REACT_APP_GEMINI_API_KEY=your_gemini_api_key_here
 ```
+
+**Important:**
+- The `.env.local` file is gitignored and must be recreated on each new machine
+- After modifying environment variables, restart the development server
+- All variables must be prefixed with `REACT_APP_` to be accessible in React components
 
 ### Deployment Platforms
 - Vercel (recommended for React apps)

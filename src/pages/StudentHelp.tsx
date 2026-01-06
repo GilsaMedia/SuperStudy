@@ -138,7 +138,12 @@ const agent = new StudyTutorAgent();
 async function getAiReply(messages: ChatMessage[]): Promise<string> {
   const geminiKey = process.env.REACT_APP_GEMINI_API_KEY;
   if (!geminiKey) {
-    throw new Error('Gemini API key missing. Set REACT_APP_GEMINI_API_KEY in your environment.');
+    throw new Error(
+      'Gemini API key is missing. Please create a .env.local file in the project root and add:\n' +
+      'REACT_APP_GEMINI_API_KEY=your_api_key_here\n\n' +
+      'Get your API key from: https://makersuite.google.com/app/apikey\n' +
+      'After adding the key, restart the development server (npm start).'
+    );
   }
   return getGeminiReply(messages, geminiKey);
 }

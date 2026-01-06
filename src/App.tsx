@@ -14,6 +14,7 @@ import TeacherProfile from './pages/teacher/TeacherProfile';
 import { Navigate } from 'react-router-dom';
 import StudentDashboard from './pages/student/StudentDashboard';
 import StudentFindTeachers from './pages/student/StudentFindTeachers';
+import StudentMyTeachers from './pages/student/StudentMyTeachers';
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
         <Route path="/help" element={<StudentHelp />} />
         <Route path="/student-dashboard" element={<StudentRoute><StudentDashboard /></StudentRoute>} />
         <Route path="/student/teachers" element={<StudentRoute><StudentFindTeachers /></StudentRoute>} />
+        <Route path="/student/my-teachers" element={<StudentRoute><StudentMyTeachers /></StudentRoute>} />
         <Route path="/teacher" element={<TeacherLayout />}>
           <Route index element={<Navigate to="/teacher/students" replace />} />
           <Route path="students" element={<TeacherStudents />} />

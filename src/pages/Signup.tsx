@@ -4,6 +4,7 @@ import './login.css';
 import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import CitySelector from '../components/CitySelector';
 
 type FirebaseAuthError = { code?: string; message?: string };
 
@@ -34,6 +35,7 @@ export default function Signup() {
   const [password, setPassword] = React.useState('');
   const [confirm, setConfirm] = React.useState('');
   const [phone, setPhone] = React.useState('');
+  const [phoneError, setPhoneError] = React.useState<string | null>(null);
   const [selectedRole, setSelectedRole] = React.useState<'teacher' | 'student' | null>(null);
   const [teacherSubject, setTeacherSubject] = React.useState('Math');
   const [teacherPoints, setTeacherPoints] = React.useState('5');
@@ -43,6 +45,47 @@ export default function Signup() {
   const [isGoogleBusy, setIsGoogleBusy] = React.useState(false);
 
   const goHome = () => navigate('/', { replace: true });
+
+  // Phone validation function
+  const validatePhone = (phoneNumber: string): { isValid: boolean; error: string | null } => {
+    if (!phoneNumber || !phoneNumber.trim()) {
+      return { isValid: false, error: 'Phone number is required.' };
+    }
+
+    // Remove all whitespace and common formatting characters
+    const cleaned = phoneNumber.replace(/[\s\-\(\)\.]/g, '');
+
+    // Check if it starts with + (international format)
+    if (cleaned.startsWith('+')) {
+      // International format: + followed by 7-15 digits
+      const internationalPattern = /^\+[1-9]\d{6,14}$/;
+      if (!internationalPattern.test(cleaned)) {
+        return { 
+          isValid: false, 
+          error: 'Invalid international format. Use + followed by country code and number (e.g., +1234567890).' 
+        };
+      }
+    } else {
+      // Domestic format: 10-15 digits
+      const domesticPattern = /^\d{10,15}$/;
+      if (!domesticPattern.test(cleaned)) {
+        return { 
+          isValid: false, 
+          error: 'Invalid phone format. Use international format with + (e.g., +1234567890) or 10-15 digits.' 
+        };
+      }
+    }
+
+    return { isValid: true, error: null };
+  };
+
+  const handlePhoneChange = (value: string) => {
+    setPhone(value);
+    // Clear error when user starts typing
+    if (phoneError) {
+      setPhoneError(null);
+    }
+  };
 
   function withTimeout<T>(p: Promise<T>, ms = 15000): Promise<T> {
     return new Promise((resolve, reject) => {
@@ -63,8 +106,10 @@ export default function Signup() {
       return;
     }
     // Require phone number for both teachers and students
-    if (!phone || !phone.trim()) {
-      setError('Please provide your phone number.');
+    const phoneValidation = validatePhone(phone);
+    if (!phoneValidation.isValid) {
+      setPhoneError(phoneValidation.error);
+      setError(phoneValidation.error);
       return;
     }
     if (selectedRole === 'teacher') {
@@ -154,8 +199,10 @@ export default function Signup() {
         throw new Error('role-missing');
       }
       // Require phone for both teachers and students on Google signup
-      if (!phone || !phone.trim()) {
-        setError('Please provide your phone number.');
+      const phoneValidation = validatePhone(phone);
+      if (!phoneValidation.isValid) {
+        setPhoneError(phoneValidation.error);
+        setError(phoneValidation.error);
         setIsGoogleBusy(false);
         return;
       }
@@ -172,11 +219,6 @@ export default function Signup() {
         }
         if (!teacherPoints || !teacherPoints.trim()) {
           setError('Please select points/units.');
-          setIsGoogleBusy(false);
-          return;
-        }
-        if (!phone || !phone.trim()) {
-          setError('Please provide your phone number.');
           setIsGoogleBusy(false);
           return;
         }
@@ -281,17 +323,13 @@ export default function Signup() {
       </div>
 
       <label className="input-label">Location <span style={{ color: '#fca5a5' }}>*</span></label>
-      <div className="input-group">
-        <span className="input-icon">📍</span>
-        <input
-          type="text"
-          placeholder="City or area"
-          value={teacherLocation}
-          onChange={(e) => setTeacherLocation(e.target.value)}
-          className="input-field"
-          required={selectedRole === 'teacher'}
-        />
-      </div>
+      <CitySelector
+        value={teacherLocation}
+        onChange={setTeacherLocation}
+        required={selectedRole === 'teacher'}
+        placeholder="Select a city"
+        className="input-field"
+      />
     </>
   );
 
@@ -358,8 +396,7 @@ export default function Signup() {
           </div>
 
           <label className="input-label">
-            Phone Number {selectedRole === 'teacher' && <span style={{ color: '#fca5a5' }}>*</span>}
-            {selectedRole !== 'teacher' && <span style={{ color: '#94a3b8', fontSize: 12, fontWeight: 'normal' }}> (optional)</span>}
+            Phone Number <span style={{ color: '#fca5a5' }}>*</span>
           </label>
           <div className="input-group">
             <span className="input-icon">📞</span>
@@ -367,14 +404,29 @@ export default function Signup() {
               type="tel"
               placeholder="+1234567890"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => handlePhoneChange(e.target.value)}
+              onBlur={() => {
+                if (phone) {
+                  const validation = validatePhone(phone);
+                  setPhoneError(validation.error);
+                }
+              }}
               className="input-field"
-              required={selectedRole === 'teacher'}
+              required
+              style={{
+                borderColor: phoneError ? '#fca5a5' : undefined,
+              }}
             />
           </div>
-          <small style={{ color: '#94a3b8', fontSize: 12, marginTop: 4, marginBottom: 8, display: 'block' }}>
-            Include country code (e.g., +1 for US, +44 for UK)
-          </small>
+          {phoneError ? (
+            <small style={{ color: '#fca5a5', fontSize: 12, marginTop: 4, marginBottom: 8, display: 'block' }}>
+              {phoneError}
+            </small>
+          ) : (
+            <small style={{ color: '#94a3b8', fontSize: 12, marginTop: 4, marginBottom: 8, display: 'block' }}>
+              Include country code (e.g., +1 for US, +44 for UK)
+            </small>
+          )}
 
           {teacherExtraFields}
 

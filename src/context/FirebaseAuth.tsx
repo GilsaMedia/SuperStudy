@@ -12,6 +12,7 @@ interface UserProfile {
   subject?: string;
   points?: string;
   location?: string;
+  rules?: string;
 }
 
 interface AuthContextValue {
@@ -19,6 +20,7 @@ interface AuthContextValue {
   profile: UserProfile | null;
   loading: boolean;
   logout: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const PROFILE_CACHE_KEY = 'superstudy_user_profile';
@@ -44,20 +46,19 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
     return () => unsub();
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    const fetchProfile = async () => {
-      if (!user) {
-        setProfile(null);
-        setProfileLoading(false);
-        try {
-          window.localStorage.removeItem(PROFILE_CACHE_KEY);
-        } catch {}
-        return;
-      }
+  const fetchProfile = React.useCallback(async (skipCache = false) => {
+    if (!user) {
+      setProfile(null);
+      setProfileLoading(false);
+      try {
+        window.localStorage.removeItem(PROFILE_CACHE_KEY);
+      } catch {}
+      return;
+    }
 
-      let cacheApplied = false;
-      // Load cached profile immediately if available (helps offline scenarios)
+    let cacheApplied = false;
+    // Load cached profile immediately if available (helps offline scenarios)
+    if (!skipCache) {
       try {
         const cached = window.localStorage.getItem(PROFILE_CACHE_KEY);
         if (cached) {
@@ -68,16 +69,29 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
           }
         }
       } catch {}
+    }
 
-      setProfileLoading(!cacheApplied);
-      try {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const data = userDoc.data();
-          // eslint-disable-next-line no-console
-          console.log('[FirebaseAuth] Loaded profile from Firestore:', { uid: user.uid, role: data.role, data });
-          if (active) {
-            setProfile({
+    setProfileLoading(!cacheApplied);
+    try {
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        // eslint-disable-next-line no-console
+        console.log('[FirebaseAuth] Loaded profile from Firestore:', { uid: user.uid, role: data.role, data });
+        setProfile({
+          uid: user.uid,
+          role: data.role || 'student',
+          fullName: data.fullName,
+          email: data.email,
+          subject: data.subject,
+          points: data.points,
+          location: data.location,
+          rules: data.rules,
+        });
+        try {
+          window.localStorage.setItem(
+            PROFILE_CACHE_KEY,
+            JSON.stringify({
               uid: user.uid,
               role: data.role || 'student',
               fullName: data.fullName,
@@ -85,61 +99,48 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
               subject: data.subject,
               points: data.points,
               location: data.location,
-            });
-            try {
-              window.localStorage.setItem(
-                PROFILE_CACHE_KEY,
-                JSON.stringify({
-                  uid: user.uid,
-                  role: data.role || 'student',
-                  fullName: data.fullName,
-                  email: data.email,
-                  subject: data.subject,
-                  points: data.points,
-                  location: data.location,
-                } satisfies UserProfile),
-              );
-            } catch {}
-          }
-        } else if (active) {
-          // eslint-disable-next-line no-console
-          console.warn('[FirebaseAuth] User document does not exist in Firestore:', user.uid);
-          setProfile(null);
-          try {
-            window.localStorage.removeItem(PROFILE_CACHE_KEY);
-          } catch {}
-        }
-      } catch (err) {
-        if (active) {
-          // eslint-disable-next-line no-console
-          console.warn('Failed to load profile. Falling back to auth user only.', err);
-          try {
-            const cached = window.localStorage.getItem(PROFILE_CACHE_KEY);
-            if (cached) {
-              const parsed: UserProfile = JSON.parse(cached);
-              if (parsed?.uid === user.uid) {
-                setProfile(parsed);
-              } else {
-                setProfile(null);
-              }
-            } else {
-              setProfile(null);
-            }
-          } catch {
+              rules: data.rules,
+            } satisfies UserProfile),
+          );
+        } catch {}
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn('[FirebaseAuth] User document does not exist in Firestore:', user.uid);
+        setProfile(null);
+        try {
+          window.localStorage.removeItem(PROFILE_CACHE_KEY);
+        } catch {}
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('Failed to load profile. Falling back to auth user only.', err);
+      try {
+        const cached = window.localStorage.getItem(PROFILE_CACHE_KEY);
+        if (cached) {
+          const parsed: UserProfile = JSON.parse(cached);
+          if (parsed?.uid === user.uid) {
+            setProfile(parsed);
+          } else {
             setProfile(null);
           }
+        } else {
+          setProfile(null);
         }
-      } finally {
-        if (active) setProfileLoading(false);
+      } catch {
+        setProfile(null);
       }
-    };
-
-    void fetchProfile();
-
-    return () => {
-      active = false;
-    };
+    } finally {
+      setProfileLoading(false);
+    }
   }, [user]);
+
+  useEffect(() => {
+    void fetchProfile();
+  }, [fetchProfile]);
+
+  const refreshProfile = React.useCallback(async () => {
+    await fetchProfile(true); // Skip cache when refreshing
+  }, [fetchProfile]);
 
   const logout = async () => {
     await signOut(auth);
@@ -150,6 +151,7 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
     profile,
     loading: loading || profileLoading,
     logout,
+    refreshProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

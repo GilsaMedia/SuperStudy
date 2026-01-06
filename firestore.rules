@@ -16,7 +16,124 @@ service cloud.firestore {
     // Each teacher manages their own students subcollection:
     // /users/{userId}/students/{studentId}
     match /users/{userId}/students/{studentId} {
+      // Teachers can read/write their own students subcollection
       allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Students can read their own document in any teacher's students subcollection
+      // This allows students to check which teachers have added them
+      allow read: if request.auth != null && request.auth.uid == studentId;
+      // Students can delete their own document from a teacher's students subcollection
+      // This allows students to leave a teacher
+      allow delete: if request.auth != null && request.auth.uid == studentId;
+    }
+
+    // Calendar subcollection for each user
+    // /users/{userId}/calendar/{appointmentId}
+    match /users/{userId}/calendar/{appointmentId} {
+      // Users can read their own calendar
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      // Teachers can create calendar entries in their own calendar
+      allow create: if request.auth != null && request.auth.uid == userId;
+      
+      // Teachers can create calendar entries in student calendars if:
+      // 1. The student is in the teacher's students subcollection (locked in)
+      // 2. The appointmentId matches the one being created
+      allow create: if request.auth != null 
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/students/$(userId))
+        && request.resource.data.appointmentId == appointmentId;
+      
+      // Teachers can update/delete calendar entries in their own calendar
+      allow update, delete: if request.auth != null && request.auth.uid == userId;
+      
+      // Students can update their own calendar entries (e.g., to mark as seen)
+      allow update: if request.auth != null && request.auth.uid == userId;
+      
+      // Students can delete calendar entries from teacher calendars if:
+      // 1. The student is the studentId in the calendar entry
+      // 2. This allows students to clean up calendar entries when leaving a teacher
+      allow delete: if request.auth != null 
+        && request.auth.uid == resource.data.studentId;
+      
+      // Teachers can delete calendar entries from student calendars if:
+      // 1. The teacher is the teacherId in the calendar entry
+      // 2. This allows teachers to clean up calendar entries when removing a student
+      allow delete: if request.auth != null 
+        && request.auth.uid == resource.data.teacherId;
+    }
+
+    // Appointments collection
+    match /appointments/{appointmentId} {
+      // Teachers can create appointments for their students
+      allow create: if request.auth != null 
+        && request.auth.uid == request.resource.data.teacherId;
+      
+      // Teachers can read and update their own appointments
+      allow read, update: if request.auth != null 
+        && request.auth.uid == resource.data.teacherId;
+      
+      // Students can read appointments where they are the student
+      allow read: if request.auth != null 
+        && request.auth.uid == resource.data.studentId;
+      
+      // Teachers can delete their own appointments
+      allow delete: if request.auth != null 
+        && request.auth.uid == resource.data.teacherId;
+      
+      // Students can delete appointments where they are the student
+      allow delete: if request.auth != null 
+        && request.auth.uid == resource.data.studentId;
+    }
+
+    // Ratings subcollection: /users/{teacherId}/ratings/{studentId}
+    // Only students who have had at least one lesson with the teacher can rate
+    match /users/{teacherId}/ratings/{studentId} {
+      // Anyone authenticated can read ratings (to see average ratings)
+      allow read: if request.auth != null;
+      
+      // Students can create/update their own rating for a teacher if:
+      // 1. They are authenticated as a student
+      // 2. They are not rating themselves
+      // 3. They are in the teacher's students subcollection (proxy for having lessons)
+      // 4. The rating is valid (1-5)
+      allow create, update: if request.auth != null 
+        && request.auth.uid == studentId
+        && request.auth.uid != teacherId
+        && exists(/databases/$(database)/documents/users/$(teacherId)/students/$(studentId))
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.studentId == request.auth.uid;
+      
+      // Students can delete their own rating
+      allow delete: if request.auth != null && request.auth.uid == studentId;
+    }
+
+    // Cities collection - anyone can read cities (including unauthenticated users)
+    // Anyone can create cities (they are validated before adding)
+    match /cities/{cityId} {
+      // Allow anyone (including unauthenticated) to read cities
+      allow read: if true;
+      // Allow anyone to create cities (validated on client side)
+      // Only require that name is a non-empty string
+      // addedBy field is optional and can be null for unauthenticated users
+      allow create: if request.resource.data.name is string
+        && request.resource.data.name.size() > 0;
+      // Only admins can update/delete (managed through Firebase Console)
+      allow update, delete: if false;
+    }
+
+    // City requests collection - logged requests for tracking
+    match /cityRequests/{requestId} {
+      // Anyone authenticated can read city requests (for transparency)
+      allow read: if request.auth != null;
+      // Only authenticated users can create requests (for tracking purposes)
+      allow create: if request.auth != null 
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.cityName is string
+        && request.resource.data.cityName.size() > 0
+        && request.resource.data.status == 'pending';
+      // Only admins can update/delete (managed through Firebase Console)
+      allow update, delete: if false;
     }
 
     // Default deny all other collections
@@ -25,4 +142,3 @@ service cloud.firestore {
     }
   }
 }
-

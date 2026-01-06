@@ -1,6 +1,8 @@
 import React from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { useFirebaseAuth } from '../../context/FirebaseAuth';
+import StarRating from '../../components/StarRating';
 
 type Teacher = {
   id: string;
@@ -11,6 +13,9 @@ type Teacher = {
   email?: string;
   phone?: string;
   rules?: string;
+  averageRating?: number;
+  ratingCount?: number;
+  hasLessonsWithStudent?: boolean; // Whether the current student has had lessons with this teacher
 };
 
 const SUBJECT_OPTIONS = [
@@ -25,13 +30,85 @@ const SUBJECT_OPTIONS = [
 ];
 
 export default function StudentFindTeachers() {
+  const { user, profile } = useFirebaseAuth();
   const [teachers, setTeachers] = React.useState<Teacher[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [success, setSuccess] = React.useState<string | null>(null);
   const [subject, setSubject] = React.useState('all');
   const [locationQuery, setLocationQuery] = React.useState('');
   const [copiedEmail, setCopiedEmail] = React.useState<string | null>(null);
   const [copiedPhone, setCopiedPhone] = React.useState<string | null>(null);
+  const [submittingRating, setSubmittingRating] = React.useState<string | null>(null);
+  const [userRatings, setUserRatings] = React.useState<Record<string, number>>({});
+
+  // Check if student has had at least one lesson with a teacher
+  const checkStudentHasLessons = React.useCallback(async (teacherId: string, studentId: string): Promise<boolean> => {
+    try {
+      // Check if student is in teacher's students subcollection (proxy for having lessons)
+      const studentDocRef = doc(db, 'users', teacherId, 'students', studentId);
+      const studentDoc = await getDoc(studentDocRef);
+      if (!studentDoc.exists()) {
+        return false;
+      }
+
+      // Also check if there's at least one appointment (preferably completed)
+      const appointmentsRef = collection(db, 'appointments');
+      const appointmentsQuery = query(
+        appointmentsRef,
+        where('teacherId', '==', teacherId),
+        where('studentId', '==', studentId)
+      );
+      const appointmentsSnapshot = await getDocs(appointmentsQuery);
+      
+      // Return true if there's at least one appointment (scheduled, completed, or past)
+      return !appointmentsSnapshot.empty;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(`Failed to check lessons for teacher ${teacherId}:`, e);
+      return false;
+    }
+  }, []);
+
+  // Fetch ratings for a specific teacher
+  const fetchTeacherRatings = React.useCallback(async (teacherId: string): Promise<{ average: number; count: number }> => {
+    try {
+      const ratingsRef = collection(db, 'users', teacherId, 'ratings');
+      const ratingsSnapshot = await getDocs(ratingsRef);
+      
+      if (ratingsSnapshot.empty) {
+        return { average: 0, count: 0 };
+      }
+
+      let totalRating = 0;
+      let count = 0;
+      const ratings: Record<string, number> = {};
+
+      ratingsSnapshot.docs.forEach((docSnap) => {
+        const data = docSnap.data();
+        const rating = data.rating as number;
+        if (typeof rating === 'number' && rating >= 1 && rating <= 5) {
+          totalRating += rating;
+          count++;
+          if (data.studentId) {
+            ratings[data.studentId] = rating;
+          }
+        }
+      });
+
+      // Store user's rating if they've rated this teacher
+      if (user?.uid && ratings[user.uid]) {
+        setUserRatings((prev) => ({ ...prev, [teacherId]: ratings[user.uid] }));
+      }
+
+      const average = count > 0 ? totalRating / count : 0;
+      return { average, count };
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(`Failed to load ratings for teacher ${teacherId}:`, e);
+      return { average: 0, count: 0 };
+    }
+  }, [user]);
 
   const fetchTeachers = React.useCallback(async () => {
     setLoading(true);
@@ -42,10 +119,22 @@ export default function StudentFindTeachers() {
       const baseQuery = query(baseCollection, where('role', '==', 'teacher'));
 
       const snapshot = await getDocs(baseQuery);
-        const list: Teacher[] = snapshot.docs.map((docSnap) => {
+      const list: Teacher[] = await Promise.all(
+        snapshot.docs.map(async (docSnap) => {
           const data = docSnap.data();
+          const teacherId = docSnap.id;
+          
+          // Fetch ratings for this teacher
+          const { average, count } = await fetchTeacherRatings(teacherId);
+          
+          // Check if current student has had lessons with this teacher
+          let hasLessonsWithStudent = false;
+          if (user?.uid) {
+            hasLessonsWithStudent = await checkStudentHasLessons(teacherId, user.uid);
+          }
+          
           return {
-            id: docSnap.id,
+            id: teacherId,
             fullName: data.fullName || data.name,
             subject: data.subject,
             points: data.points,
@@ -53,8 +142,12 @@ export default function StudentFindTeachers() {
             email: data.email,
             phone: data.phone,
             rules: data.rules,
+            averageRating: average,
+            ratingCount: count,
+            hasLessonsWithStudent,
           };
-        });
+        })
+      );
       // eslint-disable-next-line no-console
       console.log(`[FindTeachers] Loaded ${list.length} teachers from Firestore`);
       setTeachers(list);
@@ -65,7 +158,7 @@ export default function StudentFindTeachers() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchTeacherRatings, checkStudentHasLessons, user]);
 
   React.useEffect(() => {
     void fetchTeachers();
@@ -73,6 +166,61 @@ export default function StudentFindTeachers() {
 
   const handleSearch = () => {
     void fetchTeachers();
+  };
+
+  const handleRatingSubmit = async (teacherId: string, rating: number) => {
+    if (!user || !profile || profile.role !== 'student') {
+      setError('You must be logged in as a student to rate teachers.');
+      return;
+    }
+
+    // Check if student has had lessons with this teacher
+    const hasLessons = await checkStudentHasLessons(teacherId, user.uid);
+    if (!hasLessons) {
+      setError('You can only rate teachers you have had at least one lesson with.');
+      return;
+    }
+
+    setSubmittingRating(teacherId);
+    setError(null);
+    try {
+      // Store rating in Firestore: /users/{teacherId}/ratings/{studentId}
+      const ratingRef = doc(db, 'users', teacherId, 'ratings', user.uid);
+      await setDoc(ratingRef, {
+        rating: Number(rating), // Ensure it's a number, not a string
+        studentId: user.uid,
+        studentName: profile.fullName || 'Anonymous',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      // Update local state
+      setUserRatings((prev) => ({ ...prev, [teacherId]: rating }));
+
+      // Recalculate average rating for this teacher
+      const { average, count } = await fetchTeacherRatings(teacherId);
+      setTeachers((prev) =>
+        prev.map((t) => (t.id === teacherId ? { ...t, averageRating: average, ratingCount: count } : t))
+      );
+      
+      // Show success message briefly
+      setSuccess('Rating submitted successfully!');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to submit rating:', e);
+      
+      // Provide more specific error messages
+      if (e?.code === 'permission-denied' || e?.code === 'PERMISSION_DENIED') {
+        setError('Permission denied. Make sure you have had at least one lesson with this teacher.');
+      } else if (e?.message) {
+        setError(`Failed to submit rating: ${e.message}`);
+      } else {
+        setError('Failed to submit rating. Please try again.');
+      }
+    } finally {
+      setSubmittingRating(null);
+    }
   };
 
   const copyToClipboard = async (text: string, type: 'email' | 'phone') => {
@@ -254,7 +402,35 @@ export default function StudentFindTeachers() {
         )}
 
         {error && (
-          <div style={{ padding: '40px 0', textAlign: 'center', color: '#fca5a5' }}>{error}</div>
+          <div
+            style={{
+              padding: '12px 16px',
+              borderRadius: 8,
+              background: 'rgba(239,68,68,0.2)',
+              border: '1px solid rgba(239,68,68,0.5)',
+              color: '#fca5a5',
+              marginBottom: 16,
+              textAlign: 'center',
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div
+            style={{
+              padding: '12px 16px',
+              borderRadius: 8,
+              background: 'rgba(34,197,94,0.2)',
+              border: '1px solid rgba(34,197,94,0.5)',
+              color: '#86efac',
+              marginBottom: 16,
+              textAlign: 'center',
+            }}
+          >
+            {success}
+          </div>
         )}
 
         {showEmptyState && (
@@ -290,9 +466,38 @@ export default function StudentFindTeachers() {
                   gap: 8,
                 }}
               >
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#ffffff' }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#ffffff', marginBottom: 4 }}>
                   {teacher.fullName || 'Unnamed Teacher'}
                 </div>
+                
+                {/* Star Rating Display */}
+                <div style={{ marginBottom: 8 }}>
+                  <StarRating
+                    rating={teacher.averageRating || 0}
+                    ratingCount={teacher.ratingCount || 0}
+                    interactive={
+                      !!user && 
+                      profile?.role === 'student' && 
+                      submittingRating !== teacher.id &&
+                      teacher.hasLessonsWithStudent === true
+                    }
+                    onRatingChange={(rating) => handleRatingSubmit(teacher.id, rating)}
+                    size="small"
+                    showCount={true}
+                  />
+                  {!!user && profile?.role === 'student' && !teacher.hasLessonsWithStudent && (
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, fontStyle: 'italic' }}>
+                      Rate after your first lesson
+                    </div>
+                  )}
+                </div>
+                
+                {submittingRating === teacher.id && (
+                  <div style={{ fontSize: 12, color: '#93c5fd', marginBottom: 4, fontStyle: 'italic' }}>
+                    Submitting rating...
+                  </div>
+                )}
+                
                 <div style={{ color: '#cbd5f5' }}>Subject: {teacher.subject || '—'}</div>
                 <div style={{ color: '#cbd5f5' }}>Units: {teacher.points || '—'}</div>
                 <div style={{ color: '#cbd5f5' }}>Location: {teacher.location || '—'}</div>
