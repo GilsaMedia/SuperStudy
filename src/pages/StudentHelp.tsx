@@ -36,29 +36,96 @@ class StudyTutorAgent {
     let topic = 'general';
     let complexity: 'simple' | 'medium' | 'complex' = 'medium';
 
-    // Detect subject
-    if (lower.includes('solve') || lower.includes('equation') || lower.includes('x') || lower.includes('y')) {
-      topic = 'algebra';
-    } else if (lower.includes('derivative') || lower.includes('integral') || lower.includes('calculus')) {
+    // Detect subject - check more specific subjects first to avoid false matches
+    // Language subjects
+    if (lower.includes('hebrew') || lower.includes('עברית') || /[\u0590-\u05FF]/.test(question)) {
+      topic = 'hebrew';
+    } else if (lower.includes('english') || lower.includes('grammar') || lower.includes('syntax') || 
+               lower.includes('essay') || lower.includes('writing') || lower.includes('literature') ||
+               lower.includes('poem') || lower.includes('poetry') || lower.includes('novel') ||
+               lower.includes('analyze this text') || lower.includes('what does this mean') ||
+               lower.includes('comprehension') || lower.includes('reading')) {
+      topic = 'english';
+    } else if (lower.includes('spanish') || lower.includes('french') || lower.includes('german') ||
+               lower.includes('arabic') || lower.includes('chinese') || lower.includes('japanese')) {
+      topic = lower.includes('spanish') ? 'spanish' : 
+              lower.includes('french') ? 'french' :
+              lower.includes('german') ? 'german' :
+              lower.includes('arabic') ? 'arabic' :
+              lower.includes('chinese') ? 'chinese' : 'japanese';
+    }
+    // Math subjects - be more specific to avoid false positives
+    else if (lower.includes('derivative') || lower.includes('integral') || lower.includes('calculus') ||
+             lower.includes('limit') || lower.includes('differentiation')) {
       topic = 'calculus';
       complexity = 'complex';
-    } else if (lower.includes('triangle') || lower.includes('angle') || lower.includes('geometry')) {
+    } else if (lower.includes('triangle') || lower.includes('angle') || lower.includes('geometry') ||
+               lower.includes('circle') || lower.includes('perimeter') || lower.includes('area') ||
+               lower.includes('volume') || lower.includes('polygon') || lower.includes('theorem')) {
       topic = 'geometry';
-    } else if (lower.includes('physics') || lower.includes('force') || lower.includes('velocity')) {
+    } else if ((lower.includes('solve') && (lower.includes('equation') || lower.includes('x') || lower.includes('y') || lower.includes('variable'))) ||
+               lower.includes('quadratic') || lower.includes('polynomial') || lower.includes('linear equation') ||
+               lower.includes('system of equations') || lower.includes('inequality')) {
+      topic = 'algebra';
+    } else if (lower.includes('statistics') || lower.includes('probability') || lower.includes('mean') ||
+               lower.includes('median') || lower.includes('standard deviation')) {
+      topic = 'statistics';
+    } else if (lower.includes('trigonometry') || lower.includes('sin') || lower.includes('cos') ||
+               lower.includes('tan') || lower.includes('trig')) {
+      topic = 'trigonometry';
+    }
+    // Science subjects
+    else if (lower.includes('physics') || lower.includes('force') || lower.includes('velocity') ||
+             lower.includes('acceleration') || lower.includes('momentum') || lower.includes('energy') ||
+             lower.includes('electricity') || lower.includes('magnetism') || lower.includes('wave') ||
+             lower.includes('quantum') || lower.includes('thermodynamics')) {
       topic = 'physics';
-    } else if (lower.includes('chemistry') || lower.includes('molecule') || lower.includes('reaction')) {
+    } else if (lower.includes('chemistry') || lower.includes('molecule') || lower.includes('reaction') ||
+               lower.includes('atom') || lower.includes('element') || lower.includes('compound') ||
+               lower.includes('periodic table') || lower.includes('bond') || lower.includes('ph')) {
       topic = 'chemistry';
-    } else if (lower.includes('history') || lower.includes('historical')) {
-      topic = 'history';
-    } else if (lower.includes('biology') || lower.includes('cell') || lower.includes('organism')) {
+    } else if (lower.includes('biology') || lower.includes('cell') || lower.includes('organism') ||
+               lower.includes('dna') || lower.includes('gene') || lower.includes('evolution') ||
+               lower.includes('ecosystem') || lower.includes('photosynthesis')) {
       topic = 'biology';
+    } else if (lower.includes('geology') || lower.includes('earth science') || lower.includes('rock') ||
+               lower.includes('mineral') || lower.includes('plate tectonics')) {
+      topic = 'earth science';
+    }
+    // Social studies
+    else if (lower.includes('history') || lower.includes('historical') || lower.includes('war') ||
+             lower.includes('ancient') || lower.includes('civilization') || lower.includes('empire')) {
+      topic = 'history';
+    } else if (lower.includes('geography') || lower.includes('map') || lower.includes('country') ||
+               lower.includes('continent') || lower.includes('climate')) {
+      topic = 'geography';
+    } else if (lower.includes('government') || lower.includes('politics') || lower.includes('civics') ||
+               lower.includes('constitution') || lower.includes('democracy')) {
+      topic = 'government';
+    } else if (lower.includes('economics') || lower.includes('economy') || lower.includes('market') ||
+               lower.includes('supply') || lower.includes('demand')) {
+      topic = 'economics';
+    }
+    // Arts and other subjects
+    else if (lower.includes('art') || lower.includes('drawing') || lower.includes('painting') ||
+             lower.includes('sculpture') || lower.includes('design')) {
+      topic = 'art';
+    } else if (lower.includes('music') || lower.includes('note') || lower.includes('chord') ||
+               lower.includes('scale') || lower.includes('rhythm')) {
+      topic = 'music';
+    } else if (lower.includes('computer science') || lower.includes('programming') || lower.includes('code') ||
+               lower.includes('algorithm') || lower.includes('software')) {
+      topic = 'computer science';
+    } else if (lower.includes('philosophy') || lower.includes('ethics') || lower.includes('logic')) {
+      topic = 'philosophy';
     }
 
     // Detect complexity
     if (lower.includes('step') || lower.includes('show') || lower.includes('explain')) {
       complexity = 'medium';
     }
-    if (lower.split(' ').length > 20 || lower.includes('prove') || lower.includes('theorem')) {
+    if (lower.split(' ').length > 20 || lower.includes('prove') || lower.includes('theorem') ||
+        lower.includes('analyze') || lower.includes('compare') || lower.includes('evaluate')) {
       complexity = 'complex';
     }
     if (lower.split(' ').length < 5) {
@@ -493,7 +560,7 @@ export default function StudentHelp() {
           <textarea
             id="q"
             className="help__textarea"
-            placeholder="e.g., Solve: 2x + 5 = 17. Show each step. You can also attach a photo of the problem below."
+            placeholder="e.g., Help me with this physics problem... or Explain this English passage... or Solve this algebra equation... You can also attach a photo of the problem below."
             value={input}
             onChange={(e) => setInput(e.target.value)}
             rows={4}

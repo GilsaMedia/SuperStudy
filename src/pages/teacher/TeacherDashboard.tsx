@@ -1,9 +1,10 @@
 import React from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
-import { doc, getDoc, collection, onSnapshot, query, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, Timestamp, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useFirebaseAuth } from '../../context/FirebaseAuth';
 import { openGoogleCalendar } from '../../utils/googleCalendar';
+import StarRating from '../../components/StarRating';
 
 type CalendarAppointment = {
   id: string;
@@ -39,33 +40,80 @@ export default function TeacherDashboard({ profileOverride }: TeacherDashboardPr
   const [studentCount, setStudentCount] = React.useState<number | null>(null);
   const [appointments, setAppointments] = React.useState<CalendarAppointment[]>([]);
   const [loadingAppointments, setLoadingAppointments] = React.useState(true);
+  const [averageRating, setAverageRating] = React.useState<number>(0);
+  const [ratingCount, setRatingCount] = React.useState<number>(0);
+  const [loadingRatings, setLoadingRatings] = React.useState(true);
 
   const profile = profileOverride || outletContext?.profile || authProfile;
 
+  // Listen to students subcollection to get real-time count
   React.useEffect(() => {
-    let active = true;
-    const fetchStudentCount = async () => {
-      if (!user) return;
+    if (!user?.uid) {
+      setStudentCount(0);
+      return;
+    }
+
+    const studentsRef = collection(db, 'users', user.uid, 'students');
+    const q = query(studentsRef);
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        setStudentCount(snapshot.size);
+      },
+      (err) => {
+        console.error('Error fetching student count:', err);
+        setStudentCount(0);
+      }
+    );
+
+    return () => unsub();
+  }, [user?.uid]);
+
+  // Fetch teacher's ratings
+  React.useEffect(() => {
+    if (!user?.uid) {
+      setLoadingRatings(false);
+      return;
+    }
+
+    const fetchRatings = async () => {
       try {
-        const snapshot = await getDoc(doc(db, 'teacherStats', user.uid));
-        if (snapshot.exists() && active) {
-          const data = snapshot.data();
-          setStudentCount(typeof data.totalStudents === 'number' ? data.totalStudents : 0);
-        } else if (active) {
-          setStudentCount(0);
+        const ratingsRef = collection(db, 'users', user.uid, 'ratings');
+        const ratingsSnapshot = await getDocs(ratingsRef);
+        
+        if (ratingsSnapshot.empty) {
+          setAverageRating(0);
+          setRatingCount(0);
+          setLoadingRatings(false);
+          return;
         }
+
+        let totalRating = 0;
+        let count = 0;
+
+        ratingsSnapshot.docs.forEach((docSnap) => {
+          const data = docSnap.data();
+          const rating = data.rating as number;
+          if (typeof rating === 'number' && rating >= 1 && rating <= 5) {
+            totalRating += rating;
+            count++;
+          }
+        });
+
+        const average = count > 0 ? totalRating / count : 0;
+        setAverageRating(average);
+        setRatingCount(count);
       } catch (err) {
-        if (active) {
-          setStudentCount(0);
-        }
+        console.error('Error fetching ratings:', err);
+        setAverageRating(0);
+        setRatingCount(0);
+      } finally {
+        setLoadingRatings(false);
       }
     };
 
-    void fetchStudentCount();
-    return () => {
-      active = false;
-    };
-  }, [user]);
+    void fetchRatings();
+  }, [user?.uid]);
 
   // Listen to teacher's calendar
   React.useEffect(() => {
@@ -127,6 +175,27 @@ export default function TeacherDashboard({ profileOverride }: TeacherDashboardPr
       title: 'Total Students',
       value: studentCount === null ? '—' : studentCount,
       description: 'Number of students currently linked to you.',
+    },
+    {
+      title: 'Your Rating',
+      value: loadingRatings ? (
+        'Loading...'
+      ) : ratingCount > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+          <StarRating
+            rating={averageRating}
+            ratingCount={ratingCount}
+            interactive={false}
+            size="medium"
+            showCount={true}
+          />
+        </div>
+      ) : (
+        <div style={{ color: '#94a3b8' }}>No ratings yet</div>
+      ),
+      description: ratingCount > 0
+        ? `Average rating from ${ratingCount} ${ratingCount === 1 ? 'student' : 'students'}.`
+        : 'Students can rate you after lessons.',
     },
     {
       title: 'Next Lesson',

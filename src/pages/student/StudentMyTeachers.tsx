@@ -1,7 +1,8 @@
 import React from 'react';
-import { collection, getDocs, query, where, getDoc, doc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, where, getDoc, doc, deleteDoc, writeBatch, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useFirebaseAuth } from '../../context/FirebaseAuth';
+import StarRating from '../../components/StarRating';
 
 type Teacher = {
   id: string;
@@ -12,6 +13,9 @@ type Teacher = {
   email?: string;
   phone?: string;
   rules?: string;
+  averageRating?: number;
+  ratingCount?: number;
+  userRating?: number; // The current student's rating for this teacher
 };
 
 export default function StudentMyTeachers() {
@@ -20,6 +24,43 @@ export default function StudentMyTeachers() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
+  const [submittingRating, setSubmittingRating] = React.useState<string | null>(null);
+
+  // Fetch ratings for a specific teacher
+  const fetchTeacherRatings = React.useCallback(async (teacherId: string, studentId: string): Promise<{ average: number; count: number; userRating?: number }> => {
+    try {
+      const ratingsRef = collection(db, 'users', teacherId, 'ratings');
+      const ratingsSnapshot = await getDocs(ratingsRef);
+      
+      if (ratingsSnapshot.empty) {
+        return { average: 0, count: 0 };
+      }
+
+      let totalRating = 0;
+      let count = 0;
+      let userRating: number | undefined;
+
+      ratingsSnapshot.docs.forEach((docSnap) => {
+        const data = docSnap.data();
+        const rating = data.rating as number;
+        if (typeof rating === 'number' && rating >= 1 && rating <= 5) {
+          totalRating += rating;
+          count++;
+          // Check if this is the current student's rating (document ID should be studentId)
+          if (docSnap.id === studentId || data.studentId === studentId) {
+            userRating = rating;
+          }
+        }
+      });
+
+      const average = count > 0 ? totalRating / count : 0;
+      return { average, count, userRating };
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error(`Failed to load ratings for teacher ${teacherId}:`, e);
+      return { average: 0, count: 0 };
+    }
+  }, []);
 
   React.useEffect(() => {
     if (!profile?.uid || !user) {
@@ -47,6 +88,10 @@ export default function StudentMyTeachers() {
           
           if (studentDoc.exists()) {
             const teacherData = teacherDoc.data();
+            
+            // Fetch ratings for this teacher
+            const { average, count, userRating } = await fetchTeacherRatings(teacherId, profile.uid);
+            
             myTeachers.push({
               id: teacherId,
               fullName: teacherData.fullName || teacherData.name,
@@ -56,6 +101,9 @@ export default function StudentMyTeachers() {
               email: teacherData.email,
               phone: teacherData.phone,
               rules: teacherData.rules,
+              averageRating: average,
+              ratingCount: count,
+              userRating: userRating,
             });
           }
         }
@@ -71,7 +119,7 @@ export default function StudentMyTeachers() {
     };
 
     void fetchMyTeachers();
-  }, [profile?.uid, user]);
+  }, [profile?.uid, user, fetchTeacherRatings]);
 
   const leaveTeacher = async (teacherId: string, teacherName: string) => {
     if (!profile?.uid) {
@@ -140,6 +188,55 @@ export default function StudentMyTeachers() {
       } else {
         setError(`Failed to leave teacher: ${e?.message || 'Unknown error'}`);
       }
+    }
+  };
+
+  const handleRatingSubmit = async (teacherId: string, rating: number) => {
+    if (!user || !profile || profile.role !== 'student') {
+      setError('You must be logged in as a student to rate teachers.');
+      return;
+    }
+
+    setSubmittingRating(teacherId);
+    setError(null);
+    try {
+      // Store rating in Firestore: /users/{teacherId}/ratings/{studentId}
+      const ratingRef = doc(db, 'users', teacherId, 'ratings', user.uid);
+      await setDoc(ratingRef, {
+        rating: Number(rating), // Ensure it's a number, not a string
+        studentId: user.uid,
+        studentName: profile.fullName || 'Anonymous',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      // Recalculate average rating for this teacher
+      const { average, count } = await fetchTeacherRatings(teacherId, user.uid);
+      setTeachers((prev) =>
+        prev.map((t) => 
+          t.id === teacherId 
+            ? { ...t, averageRating: average, ratingCount: count, userRating: rating } 
+            : t
+        )
+      );
+      
+      // Show success message briefly
+      setSuccess('Rating submitted successfully!');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to submit rating:', e);
+      
+      // Provide more specific error messages
+      if (e?.code === 'permission-denied' || e?.code === 'PERMISSION_DENIED') {
+        setError('Permission denied. Please check your Firestore security rules.');
+      } else if (e?.message) {
+        setError(`Failed to submit rating: ${e.message}`);
+      } else {
+        setError('Failed to submit rating. Please try again.');
+      }
+    } finally {
+      setSubmittingRating(null);
     }
   };
 
@@ -268,6 +365,35 @@ export default function StudentMyTeachers() {
                 <div style={{ fontSize: 18, fontWeight: 700, color: '#ffffff' }}>
                   {teacher.fullName || 'Unnamed Teacher'}
                 </div>
+                
+                {/* Star Rating Display */}
+                <div style={{ marginBottom: 8 }}>
+                  <StarRating
+                    rating={teacher.averageRating || 0}
+                    ratingCount={teacher.ratingCount || 0}
+                    userRating={teacher.userRating}
+                    interactive={
+                      !!user && 
+                      profile?.role === 'student' && 
+                      submittingRating !== teacher.id
+                    }
+                    onRatingChange={(rating) => handleRatingSubmit(teacher.id, rating)}
+                    size="small"
+                    showCount={true}
+                  />
+                  {teacher.userRating && (
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, fontStyle: 'italic' }}>
+                      Your rating: {teacher.userRating} star{teacher.userRating !== 1 ? 's' : ''}
+                    </div>
+                  )}
+                </div>
+                
+                {submittingRating === teacher.id && (
+                  <div style={{ fontSize: 12, color: '#93c5fd', marginBottom: 4, fontStyle: 'italic' }}>
+                    Submitting rating...
+                  </div>
+                )}
+                
                 <div style={{ color: '#cbd5f5' }}>Subject: {teacher.subject || '—'}</div>
                 <div style={{ color: '#cbd5f5' }}>Units: {teacher.points || '—'}</div>
                 <div style={{ color: '#cbd5f5' }}>Location: {teacher.location || '—'}</div>

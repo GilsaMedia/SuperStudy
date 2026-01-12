@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useFirebaseAuth } from '../../context/FirebaseAuth';
 import CitySelector from '../../components/CitySelector';
+import StarRating from '../../components/StarRating';
 
 type TeacherProfileContext = {
   profile: {
@@ -25,6 +26,9 @@ export default function TeacherProfile() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [averageRating, setAverageRating] = useState<number>(0);
+  const [ratingCount, setRatingCount] = useState<number>(0);
+  const [loadingRatings, setLoadingRatings] = useState(true);
 
   // Use outlet profile if available, otherwise fallback to auth profile
   const profile = outletProfile || authProfile;
@@ -49,6 +53,52 @@ export default function TeacherProfile() {
       });
     }
   }, [profile]);
+
+  // Fetch teacher's ratings
+  useEffect(() => {
+    if (!user?.uid) {
+      setLoadingRatings(false);
+      return;
+    }
+
+    const fetchRatings = async () => {
+      try {
+        const ratingsRef = collection(db, 'users', user.uid, 'ratings');
+        const ratingsSnapshot = await getDocs(ratingsRef);
+        
+        if (ratingsSnapshot.empty) {
+          setAverageRating(0);
+          setRatingCount(0);
+          setLoadingRatings(false);
+          return;
+        }
+
+        let totalRating = 0;
+        let count = 0;
+
+        ratingsSnapshot.docs.forEach((docSnap) => {
+          const data = docSnap.data();
+          const rating = data.rating as number;
+          if (typeof rating === 'number' && rating >= 1 && rating <= 5) {
+            totalRating += rating;
+            count++;
+          }
+        });
+
+        const average = count > 0 ? totalRating / count : 0;
+        setAverageRating(average);
+        setRatingCount(count);
+      } catch (err) {
+        console.error('Error fetching ratings:', err);
+        setAverageRating(0);
+        setRatingCount(0);
+      } finally {
+        setLoadingRatings(false);
+      }
+    };
+
+    void fetchRatings();
+  }, [user?.uid]);
 
   if (!profile) {
     return (
@@ -157,6 +207,46 @@ export default function TeacherProfile() {
           }}
         >
           Profile updated successfully!
+        </div>
+      )}
+
+      {/* Rating Display */}
+      {!isEditing && (
+        <div
+          style={{
+            marginBottom: 24,
+            padding: 20,
+            borderRadius: 12,
+            background: 'rgba(59,130,246,0.1)',
+            border: '1px solid rgba(59,130,246,0.3)',
+          }}
+        >
+          <div style={{ fontSize: 14, color: '#94a3b8', marginBottom: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            ⭐ Your Rating
+          </div>
+          {loadingRatings ? (
+            <div style={{ color: '#cbd5f5' }}>Loading rating...</div>
+          ) : ratingCount > 0 ? (
+            <div>
+              <StarRating
+                rating={averageRating}
+                ratingCount={ratingCount}
+                interactive={false}
+                size="large"
+                showCount={true}
+              />
+              <p style={{ marginTop: 12, color: '#cbd5f5', fontSize: 14 }}>
+                Average rating from {ratingCount} {ratingCount === 1 ? 'student' : 'students'}.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <div style={{ color: '#94a3b8', marginBottom: 8 }}>No ratings yet</div>
+              <p style={{ color: '#cbd5f5', fontSize: 14 }}>
+                Students can rate you after lessons. Ratings will appear here once you receive your first rating.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

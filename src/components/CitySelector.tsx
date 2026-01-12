@@ -1,8 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, getDocs, addDoc, serverTimestamp, where } from 'firebase/firestore';
-import { db } from '../firebase';
-import { useFirebaseAuth } from '../context/FirebaseAuth';
-import { validateCity } from '../utils/cityValidation';
+import React, { useState, useEffect, useRef } from 'react';
 
 type CitySelectorProps = {
   value: string;
@@ -12,10 +8,10 @@ type CitySelectorProps = {
   placeholder?: string;
 };
 
-type City = {
-  id: string;
+type CityOption = {
   name: string;
-  createdAt?: any;
+  displayName: string;
+  country?: string;
 };
 
 export default function CitySelector({
@@ -23,458 +19,387 @@ export default function CitySelector({
   onChange,
   required = false,
   className = '',
-  placeholder = 'Select a city',
+  placeholder = 'Search for a city',
 }: CitySelectorProps) {
-  const { user } = useFirebaseAuth();
-  const [cities, setCities] = useState<City[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState(value);
+  const [suggestions, setSuggestions] = useState<CityOption[]>([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showRequestModal, setShowRequestModal] = useState(false);
-  const [requestCityName, setRequestCityName] = useState('');
-  const [submittingRequest, setSubmittingRequest] = useState(false);
-  const [requestSuccess, setRequestSuccess] = useState(false);
-  const [validatingCity, setValidatingCity] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch cities from Firestore
-  useEffect(() => {
-    const fetchCities = async () => {
+  // Fetch city suggestions from OpenStreetMap Nominatim API (Israeli cities only)
+  const fetchCitySuggestions = async (query: string) => {
+    if (!query.trim() || query.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
       try {
         setLoading(true);
         setError(null);
-        const citiesRef = collection(db, 'cities');
-        const q = query(citiesRef, orderBy('name', 'asc'));
-        const snapshot = await getDocs(q);
-        const citiesData: City[] = [];
-        snapshot.forEach((doc) => {
-          citiesData.push({
-            id: doc.id,
-            ...doc.data(),
-          } as City);
+
+      const searchQuery = query.trim();
+      
+      // Use OpenStreetMap Nominatim API - free, no API key required
+      // Filter to Israeli cities only (countrycodes=il)
+      // Add "city" to query to help with search accuracy
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+        searchQuery
+      )}+Israel&countrycodes=il&addressdetails=1&limit=20&accept-language=en`;
+
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'SuperStudy/1.0', // Required by Nominatim
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch cities');
+      }
+
+      const data = await response.json();
+
+      // Process results to extract city information
+      const cityOptions: Array<CityOption & { matchScore: number }> = [];
+      const seenNames = new Set<string>();
+      const normalizedQuery = searchQuery.toLowerCase();
+
+      if (data && data.length > 0) {
+        data.forEach((place: any) => {
+          const address = place.address || {};
+          const type = place.type?.toLowerCase() || '';
+          const classType = place.class?.toLowerCase() || '';
+          
+          // Only include cities, towns, and villages in Israel
+          const isCityType =
+            type === 'city' ||
+            type === 'town' ||
+            type === 'village' ||
+            (classType === 'place' &&
+              (address.city || address.town || address.village || address.municipality));
+
+          if (isCityType && address.country_code === 'il') {
+            const cityName =
+              address.city ||
+              address.town ||
+              address.village ||
+              address.municipality ||
+              place.name;
+
+            if (!cityName) return;
+
+            const normalizedCityName = cityName.toLowerCase();
+            
+            // Skip duplicates
+            if (seenNames.has(normalizedCityName)) return;
+            seenNames.add(normalizedCityName);
+
+            const country = address.country || 'Israel';
+            
+            // Get district/region for display
+            const district = address.state || address.region || '';
+            
+            // Create display name
+            let displayName = cityName;
+            if (district) {
+              displayName = `${cityName}, ${district}`;
+            }
+
+            // Calculate match score to prioritize better matches
+            let matchScore = 0;
+            if (normalizedCityName === normalizedQuery) {
+              matchScore = 100; // Exact match
+            } else if (normalizedCityName.startsWith(normalizedQuery)) {
+              matchScore = 80; // Starts with query
+            } else if (normalizedCityName.includes(normalizedQuery)) {
+              matchScore = 60; // Contains query
+            } else {
+              // Check if all words in query appear in city name
+              const queryWords = normalizedQuery.split(/\s+/);
+              const allWordsMatch = queryWords.every(word => normalizedCityName.includes(word));
+              if (allWordsMatch) {
+                matchScore = 40;
+              } else {
+                matchScore = 20; // Lower priority for partial matches
+              }
+            }
+
+            cityOptions.push({
+              name: cityName,
+              displayName: displayName,
+              country: country,
+              matchScore: matchScore,
+            });
+          }
         });
-        setCities(citiesData);
-      } catch (err) {
-        console.error('Error fetching cities:', err);
+      }
+
+      // Sort by match score (highest first) and limit to top 10
+      cityOptions.sort((a, b) => b.matchScore - a.matchScore);
+      const topResults = cityOptions.slice(0, 10).map(({ matchScore, ...city }) => city);
+
+      setSuggestions(topResults);
+      setShowSuggestions(topResults.length > 0);
+      setSelectedIndex(-1);
+    } catch (err: any) {
+      console.error('Error fetching city suggestions:', err);
         setError('Failed to load cities. Please try again.');
+      setSuggestions([]);
+      setShowSuggestions(false);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchCities();
+  // Debounce search queries
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (searchQuery.trim().length >= 2) {
+      searchTimeoutRef.current = setTimeout(() => {
+        fetchCitySuggestions(searchQuery);
+      }, 300);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
+
+  // Sync searchQuery with value prop
+  useEffect(() => {
+    if (value && value !== searchQuery) {
+      setSearchQuery(value);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
-  const handleRequestCity = async () => {
-    if (!requestCityName.trim()) {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setSearchQuery(newValue);
+    if (!newValue) {
+      onChange('');
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  const handleSelectCity = (city: CityOption) => {
+    setSearchQuery(city.name);
+    onChange(city.name);
+    setShowSuggestions(false);
+    setSelectedIndex(-1);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || suggestions.length === 0) {
+      if (e.key === 'Enter' && searchQuery.trim()) {
+        // If no suggestions shown but user presses enter, select the typed value
+        onChange(searchQuery.trim());
+        setShowSuggestions(false);
+      }
       return;
     }
 
-    setSubmittingRequest(true);
-    setValidatingCity(true);
-    setError(null);
-
-    try {
-      // Check if city already exists (case-insensitive)
-      const normalizedRequest = requestCityName.trim().toLowerCase();
-      const cityExists = cities.some(
-        (city) => city.name.toLowerCase() === normalizedRequest
-      );
-
-      if (cityExists) {
-        setError('This city already exists in the list.');
-        setSubmittingRequest(false);
-        setValidatingCity(false);
-        return;
-      }
-
-      // Validate city exists using geocoding API
-      const validation = await validateCity(requestCityName.trim());
-      
-      if (!validation.isValid) {
-        setError(validation.error || 'City validation failed. Please check the city name and try again.');
-        setSubmittingRequest(false);
-        setValidatingCity(false);
-        return;
-      }
-
-      // Use normalized name from validation
-      const normalizedCityName = validation.normalizedName || requestCityName.trim();
-      
-      // Double-check normalized name doesn't already exist
-      const normalizedExists = cities.some(
-        (city) => city.name.toLowerCase() === normalizedCityName.toLowerCase()
-      );
-
-      if (normalizedExists) {
-        setError(`"${normalizedCityName}" already exists in the list.`);
-        setSubmittingRequest(false);
-        setValidatingCity(false);
-        return;
-      }
-
-      // Check if city already exists in Firestore (case-insensitive)
-      try {
-        const citiesRef = collection(db, 'cities');
-        const cityQuery = query(citiesRef, where('name', '==', normalizedCityName));
-        const snapshot = await getDocs(cityQuery);
-        
-        if (!snapshot.empty) {
-          setError(`"${normalizedCityName}" already exists in the list.`);
-          setSubmittingRequest(false);
-          setValidatingCity(false);
-          return;
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev < suggestions.length - 1 ? prev + 1 : prev));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : -1));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
+          handleSelectCity(suggestions[selectedIndex]);
+        } else if (suggestions.length > 0) {
+          handleSelectCity(suggestions[0]);
         }
-      } catch (checkErr) {
-        console.error('Error checking existing cities:', checkErr);
-        // Continue anyway - worst case is a duplicate
-      }
+        break;
+      case 'Escape':
+        setShowSuggestions(false);
+        setSelectedIndex(-1);
+        break;
+    }
+  };
 
-      setValidatingCity(false);
-
-      // City is valid - add it directly to cities collection
-      const cityData: any = {
-        name: normalizedCityName,
-        createdAt: serverTimestamp(),
-      };
-
-      // Add user info if logged in
-      if (user) {
-        cityData.addedBy = user.uid;
-        cityData.addedByName = user.displayName || user.email || 'Unknown';
-      } else {
-        cityData.addedBy = null;
-        cityData.addedByName = 'Anonymous';
-      }
-
-      await addDoc(collection(db, 'cities'), cityData);
-
-      // Also log the request for admin tracking (only if user is logged in)
-      if (user) {
-        try {
-          await addDoc(collection(db, 'cityRequests'), {
-            cityName: normalizedCityName,
-            requestedBy: user.uid,
-            requestedByName: user.displayName || user.email || 'Unknown',
-            status: 'approved',
-            autoApproved: true,
-            createdAt: serverTimestamp(),
-            approvedAt: serverTimestamp(),
-          });
-        } catch (logErr) {
-          // Log error but don't fail the operation
-          console.error('Error logging city request:', logErr);
-        }
-      }
-
-      // Refresh cities list
-      const citiesRef = collection(db, 'cities');
-      const q = query(citiesRef, orderBy('name', 'asc'));
-      const snapshot = await getDocs(q);
-      const citiesData: City[] = [];
-      snapshot.forEach((doc) => {
-        citiesData.push({
-          id: doc.id,
-          ...doc.data(),
-        } as City);
-      });
-      setCities(citiesData);
-
-      // Set the newly added city as selected
-      onChange(normalizedCityName);
-
-      setRequestSuccess(true);
-      setRequestCityName('');
-      setTimeout(() => {
-        setShowRequestModal(false);
-        setRequestSuccess(false);
-      }, 2000);
-    } catch (err) {
-      console.error('Error adding city:', err);
-      setError('Failed to add city. Please try again.');
-    } finally {
-      setSubmittingRequest(false);
-      setValidatingCity(false);
+  const handleInputFocus = () => {
+    if (suggestions.length > 0) {
+      setShowSuggestions(true);
     }
   };
 
   const isInputField = className && className.includes('input-field');
   
-  const requestButton = (
-    <button
-      type="button"
-      onClick={() => setShowRequestModal(true)}
-      style={{
-        padding: '10px 16px',
+  const inputStyle: React.CSSProperties = isInputField
+    ? {
+        width: '100%',
+      }
+    : {
+        flex: 1,
+        padding: '10px 12px',
         borderRadius: 10,
         border: '1px solid rgba(148,163,184,0.35)',
-        background: 'rgba(59, 130, 246, 0.1)',
-        color: '#93c5fd',
-        cursor: 'pointer',
-        whiteSpace: 'nowrap',
+        background: 'rgba(2,6,23,0.6)',
+        color: '#e2e8f0',
         fontSize: 14,
-        fontWeight: 500,
-        transition: 'all 0.2s',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'rgba(59, 130, 246, 0.2)';
-        e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.5)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)';
-        e.currentTarget.style.borderColor = 'rgba(148,163,184,0.35)';
-      }}
-    >
-      {isInputField ? '+ Request' : '+ Request City'}
-    </button>
-  );
+      };
   
   return (
-    <>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} ref={containerRef}>
         {isInputField ? (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
             <div className="input-group" style={{ position: 'relative', flex: 1 }}>
               <span className="input-icon">📍</span>
-              <select
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
+          <input
+            ref={inputRef}
+            type="text"
+            value={searchQuery}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onFocus={handleInputFocus}
                 required={required}
                 className={className || ''}
-                disabled={loading}
-                style={{
-                  width: '100%',
-                }}
-              >
-                <option value="">{loading ? 'Loading cities...' : placeholder}</option>
-                {cities.map((city) => (
-                  <option key={city.id} value={city.name}>
-                    {city.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {requestButton}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-            <select
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
-              required={required}
-              className={className || ''}
-              disabled={loading}
+            placeholder={loading ? 'Searching cities...' : placeholder}
+            style={inputStyle}
+            autoComplete="off"
+          />
+          {showSuggestions && suggestions.length > 0 && (
+            <div
               style={{
-                flex: 1,
-                padding: '10px 12px',
-                borderRadius: 10,
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                marginTop: 4,
+                background: '#1e293b',
                 border: '1px solid rgba(148,163,184,0.35)',
-                background: loading ? 'rgba(2,6,23,0.3)' : 'rgba(2,6,23,0.6)',
-                color: '#e2e8f0',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.6 : 1,
+                borderRadius: 10,
+                maxHeight: 300,
+                overflowY: 'auto',
+                zIndex: 1000,
+                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
               }}
             >
-              <option value="">{loading ? 'Loading cities...' : placeholder}</option>
-              {cities.map((city) => (
-                <option key={city.id} value={city.name}>
-                  {city.name}
-                </option>
+              {suggestions.map((city, index) => (
+                <div
+                  key={`${city.name}-${index}`}
+                  onClick={() => handleSelectCity(city)}
+                  onMouseEnter={() => setSelectedIndex(index)}
+                  style={{
+                    padding: '12px 16px',
+                    cursor: 'pointer',
+                    background: selectedIndex === index ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                    color: '#e2e8f0',
+                    fontSize: 14,
+                    borderBottom: index < suggestions.length - 1 ? '1px solid rgba(148,163,184,0.1)' : 'none',
+                  }}
+                >
+                  <div style={{ fontWeight: 500 }}>{city.name}</div>
+                  {city.displayName !== city.name && (
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                      {city.displayName.replace(city.name + ', ', '')}
+                    </div>
+                  )}
+                </div>
               ))}
-            </select>
-            {requestButton}
           </div>
-        )}
-        {error && (
-          <small style={{ color: '#fca5a5', fontSize: 12 }}>{error}</small>
-        )}
-        {cities.length === 0 && !loading && (
-          <small style={{ color: '#94a3b8', fontSize: 12 }}>
-            No cities available. Please request a city to get started.
-          </small>
         )}
       </div>
-
-      {/* Request City Modal */}
-      {showRequestModal && (
+      ) : (
+        <div style={{ position: 'relative', flex: 1 }}>
+          <input
+            ref={inputRef}
+            type="text"
+            value={searchQuery}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            onFocus={handleInputFocus}
+            required={required}
+            placeholder={loading ? 'Searching cities...' : placeholder}
+            style={inputStyle}
+            autoComplete="off"
+          />
+          {showSuggestions && suggestions.length > 0 && (
         <div
           style={{
-            position: 'fixed',
-            top: 0,
+                position: 'absolute',
+                top: '100%',
             left: 0,
             right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+                marginTop: 4,
+                background: '#1e293b',
+                border: '1px solid rgba(148,163,184,0.35)',
+                borderRadius: 10,
+                maxHeight: 300,
+                overflowY: 'auto',
             zIndex: 1000,
-            padding: 20,
-          }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowRequestModal(false);
-              setRequestCityName('');
-              setError(null);
-              setRequestSuccess(false);
-            }
-          }}
-        >
-          <div
-            style={{
-              background: '#1e293b',
-              borderRadius: 16,
-              padding: 24,
-              maxWidth: 500,
-              width: '100%',
-              border: '1px solid rgba(148,163,184,0.2)',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2
-              style={{
-                fontSize: 20,
-                color: '#ffffff',
-                marginBottom: 16,
-                fontWeight: 600,
+                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
               }}
             >
-              Request a New City
-            </h2>
-            <p
-              style={{
-                color: '#94a3b8',
-                fontSize: 14,
-                marginBottom: 20,
-                lineHeight: 1.6,
-              }}
-            >
-              Don't see your city? Enter the city name and we'll validate it. If it's a real city, 
-              it will be added to the list immediately.
-            </p>
-
-            {requestSuccess ? (
-              <div
+              {suggestions.map((city, index) => (
+                <div
+                  key={`${city.name}-${index}`}
+                  onClick={() => handleSelectCity(city)}
+                  onMouseEnter={() => setSelectedIndex(index)}
                 style={{
-                  padding: 16,
-                  borderRadius: 8,
-                  background: 'rgba(34, 197, 94, 0.1)',
-                  border: '1px solid rgba(34, 197, 94, 0.3)',
-                  color: '#86efac',
-                  fontSize: 14,
-                  marginBottom: 20,
-                }}
-              >
-                ✓ City validated and added successfully! You can now select it from the dropdown.
-              </div>
-            ) : (
-              <>
-                <div style={{ marginBottom: 20 }}>
-                  <label
-                    style={{
-                      display: 'block',
-                      color: '#cbd5f5',
-                      fontSize: 14,
-                      fontWeight: 500,
-                      marginBottom: 8,
-                    }}
-                  >
-                    City Name
-                  </label>
-                  <input
-                    type="text"
-                    value={requestCityName}
-                    onChange={(e) => {
-                      setRequestCityName(e.target.value);
-                      setError(null);
-                    }}
-                    placeholder="e.g., New York, Los Angeles"
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: 8,
-                      border: '1px solid rgba(148,163,184,0.35)',
-                      background: 'rgba(2,6,23,0.6)',
+                    padding: '12px 16px',
+                    cursor: 'pointer',
+                    background: selectedIndex === index ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
                       color: '#e2e8f0',
                       fontSize: 14,
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && requestCityName.trim() && !submittingRequest) {
-                        handleRequestCity();
-                      }
-                    }}
-                    autoFocus
-                  />
-                </div>
-
-                {error && (
-                  <div
-                    style={{
-                      padding: 12,
-                      borderRadius: 8,
-                      background: 'rgba(239, 68, 68, 0.1)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      color: '#fca5a5',
-                      fontSize: 14,
-                      marginBottom: 20,
-                    }}
-                  >
-                    {error}
+                    borderBottom: index < suggestions.length - 1 ? '1px solid rgba(148,163,184,0.1)' : 'none',
+                  }}
+                >
+                  <div style={{ fontWeight: 500 }}>{city.name}</div>
+                  {city.displayName !== city.name && (
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                      {city.displayName.replace(city.name + ', ', '')}
                   </div>
                 )}
-
-                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowRequestModal(false);
-                      setRequestCityName('');
-                      setError(null);
-                    }}
-                    style={{
-                      padding: '10px 20px',
-                      borderRadius: 8,
-                      border: '1px solid rgba(148,163,184,0.35)',
-                      background: 'rgba(148,163,184,0.1)',
-                      color: '#cbd5f5',
-                      cursor: 'pointer',
-                      fontSize: 14,
-                      fontWeight: 500,
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRequestCity}
-                    disabled={!requestCityName.trim() || submittingRequest || validatingCity}
-                    style={{
-                      padding: '10px 20px',
-                      borderRadius: 8,
-                      border: 'none',
-                      background:
-                        !requestCityName.trim() || submittingRequest || validatingCity
-                          ? 'rgba(59, 130, 246, 0.3)'
-                          : '#3b82f6',
-                      color: '#ffffff',
-                      cursor:
-                        !requestCityName.trim() || submittingRequest || validatingCity
-                          ? 'not-allowed'
-                          : 'pointer',
-                      fontSize: 14,
-                      fontWeight: 500,
-                      opacity:
-                        !requestCityName.trim() || submittingRequest || validatingCity ? 0.6 : 1,
-                    }}
-                  >
-                    {validatingCity ? 'Validating...' : submittingRequest ? 'Adding City...' : 'Add City'}
-                  </button>
                 </div>
-              </>
+              ))}
+            </div>
             )}
-          </div>
         </div>
       )}
-    </>
+      {error && (
+        <small style={{ color: '#fca5a5', fontSize: 12 }}>{error}</small>
+      )}
+      {!loading && searchQuery.length > 0 && searchQuery.length < 2 && (
+        <small style={{ color: '#94a3b8', fontSize: 12 }}>
+          Type at least 2 characters to search for cities
+        </small>
+      )}
+    </div>
   );
 }
 

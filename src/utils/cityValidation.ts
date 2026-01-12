@@ -1,5 +1,5 @@
 /**
- * Validates if a city exists using OpenStreetMap Nominatim geocoding API
+ * Validates if a city exists in Israel using OpenStreetMap Nominatim geocoding API
  * @param cityName - The city name to validate
  * @returns Object with isValid flag and normalized city name if valid
  */
@@ -16,10 +16,10 @@ export async function validateCity(cityName: string): Promise<{
     const searchQuery = cityName.trim();
     
     // Use OpenStreetMap Nominatim API (free, no API key required)
-    // Limit results to city-level places and include country info
+    // Filter to Israeli cities only (countrycodes=il)
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
       searchQuery
-    )}&addressdetails=1&limit=5&accept-language=en`;
+    )}&countrycodes=il&addressdetails=1&limit=5&accept-language=en`;
     
     const response = await fetch(url, {
       headers: {
@@ -39,7 +39,7 @@ export async function validateCity(cityName: string): Promise<{
     if (!data || data.length === 0) {
       return {
         isValid: false,
-        error: `"${cityName}" was not found. Please check the spelling and try again.`,
+        error: `"${cityName}" was not found in Israel. Please check the spelling and try again.`,
       };
     }
 
@@ -49,43 +49,25 @@ export async function validateCity(cityName: string): Promise<{
       const classType = place.class?.toLowerCase() || '';
       const address = place.address || {};
       
-      // Check if it's a city, town, or village
+      // Check if it's a city, town, or village in Israel
       const isCityType = 
         type === 'city' || 
         type === 'town' || 
         type === 'village' ||
-        classType === 'place' && (
+        (classType === 'place' && (
           address.city || 
           address.town || 
           address.village ||
           address.municipality
-        );
+        ));
       
-      return isCityType;
+      return isCityType && address.country_code === 'il';
     });
 
     if (!cityResult) {
-      // If no exact city match, check if first result is a place (might be a city)
-      const firstPlace = data[0];
-      if (firstPlace && firstPlace.type === 'administrative' && firstPlace.class === 'boundary') {
-        // Could be a region, try to find city name in address
-        const cityName = firstPlace.address?.city || 
-                        firstPlace.address?.town || 
-                        firstPlace.address?.municipality ||
-                        firstPlace.address?.county ||
-                        firstPlace.name;
-        
-        if (cityName) {
-          return {
-            isValid: true,
-            normalizedName: cityName,
-          };
-        }
-      }
-      
       return {
         isValid: false,
-        error: `"${cityName}" was found but doesn't appear to be a valid city. Please enter a specific city name.`,
+        error: `"${cityName}" was found but doesn't appear to be a valid Israeli city. Please enter a specific city name.`,
       };
     }
 

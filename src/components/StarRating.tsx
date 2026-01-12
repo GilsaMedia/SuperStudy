@@ -7,6 +7,7 @@ type StarRatingProps = {
   onRatingChange?: (rating: number) => void; // Callback when rating is clicked
   size?: 'small' | 'medium' | 'large';
   showCount?: boolean; // Whether to show the rating count
+  userRating?: number; // The current user's rating (if they have rated)
 };
 
 export default function StarRating({
@@ -16,9 +17,17 @@ export default function StarRating({
   onRatingChange,
   size = 'medium',
   showCount = true,
+  userRating: initialUserRating,
 }: StarRatingProps) {
   const [hoveredRating, setHoveredRating] = React.useState<number | null>(null);
-  const [userRating, setUserRating] = React.useState<number | null>(null);
+  const [userRating, setUserRating] = React.useState<number | null>(initialUserRating ?? null);
+  
+  // Update userRating when initialUserRating prop changes
+  React.useEffect(() => {
+    if (initialUserRating !== undefined) {
+      setUserRating(initialUserRating);
+    }
+  }, [initialUserRating]);
 
   const displayRating = hoveredRating ?? userRating ?? rating;
   const roundedRating = Math.round(displayRating * 2) / 2; // Round to nearest 0.5
@@ -124,7 +133,7 @@ export default function StarRating({
         >
           {ratingCount > 0 ? (
             <>
-              <strong style={{ color: '#e2e8f0' }}>{roundedRating.toFixed(1)}</strong>
+              <strong style={{ color: '#e2e8f0' }}>{(Math.round(rating * 2) / 2).toFixed(1)}</strong>
               <span style={{ marginLeft: '4px' }}>({ratingCount} {ratingCount === 1 ? 'rating' : 'ratings'})</span>
             </>
           ) : (
