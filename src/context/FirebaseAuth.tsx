@@ -16,6 +16,14 @@ export interface UserProfile {
   points?: string;
   location?: string;
   rules?: string;
+  /** Teacher: short "about me" description shown to students. */
+  bio?: string;
+  /** Teacher: years of experience. */
+  experience?: string;
+  /** Teacher: price per hour (in ₪). */
+  pricePerHour?: string;
+  /** Teacher: availability text (e.g. days/hours). */
+  availability?: string;
 }
 
 interface AuthContextValue {
@@ -98,6 +106,10 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
           points: data.points,
           location: data.location,
           rules: data.rules,
+          bio: data.bio,
+          experience: data.experience,
+          pricePerHour: data.pricePerHour,
+          availability: data.availability,
         };
         setProfile(next);
         await AsyncStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(next));

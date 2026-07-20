@@ -59,6 +59,10 @@ export default function SignupScreen() {
   const [teacherSubjects, setTeacherSubjects] = useState<string[]>([]);
   const [teacherPoints, setTeacherPoints] = useState('5');
   const [teacherLocation, setTeacherLocation] = useState('');
+  const [teacherExperience, setTeacherExperience] = useState('');
+  const [teacherPrice, setTeacherPrice] = useState('');
+  const [teacherAvailability, setTeacherAvailability] = useState('');
+  const [teacherBio, setTeacherBio] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [subjectsModalVisible, setSubjectsModalVisible] = useState(false);
@@ -115,6 +119,10 @@ export default function SignupScreen() {
         subjects: selectedRole === 'teacher' ? teacherSubjects : null,
         points: selectedRole === 'teacher' ? teacherPoints : null,
         location: selectedRole === 'teacher' ? teacherLocation : null,
+        experience: selectedRole === 'teacher' ? teacherExperience.trim() || null : null,
+        pricePerHour: selectedRole === 'teacher' ? teacherPrice.trim() || null : null,
+        availability: selectedRole === 'teacher' ? teacherAvailability.trim() || null : null,
+        bio: selectedRole === 'teacher' ? teacherBio.trim() || null : null,
         profile: { photoURL: cred.user.photoURL || null },
         metadata: {
           creationTime: cred.user.metadata?.creationTime || null,
@@ -237,6 +245,41 @@ export default function SignupScreen() {
             </View>
             <Text style={styles.label}>Location (city) *</Text>
             <CitySelector value={teacherLocation} onChange={setTeacherLocation} placeholder="Select a city" />
+            <Text style={styles.label}>Experience (years)</Text>
+            <TextInput
+              style={styles.input}
+              value={teacherExperience}
+              onChangeText={setTeacherExperience}
+              placeholder="e.g. 5"
+              placeholderTextColor={colors.textDim}
+              keyboardType="number-pad"
+            />
+            <Text style={styles.label}>Price per hour (₪)</Text>
+            <TextInput
+              style={styles.input}
+              value={teacherPrice}
+              onChangeText={setTeacherPrice}
+              placeholder="e.g. 120"
+              placeholderTextColor={colors.textDim}
+              keyboardType="number-pad"
+            />
+            <Text style={styles.label}>Availability</Text>
+            <TextInput
+              style={styles.input}
+              value={teacherAvailability}
+              onChangeText={setTeacherAvailability}
+              placeholder="e.g. Sun–Thu, afternoons"
+              placeholderTextColor={colors.textDim}
+            />
+            <Text style={styles.label}>About me</Text>
+            <TextInput
+              style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
+              value={teacherBio}
+              onChangeText={setTeacherBio}
+              placeholder="A short description students will see"
+              placeholderTextColor={colors.textDim}
+              multiline
+            />
           </>
         )}
 
