@@ -34,6 +34,10 @@ export default function TeacherProfileScreen() {
     points: profile?.points || '',
     location: profile?.location || '',
     rules: profile?.rules || '',
+    experience: profile?.experience || '',
+    pricePerHour: profile?.pricePerHour || '',
+    availability: profile?.availability || '',
+    bio: profile?.bio || '',
   });
   const [subjectsModalVisible, setSubjectsModalVisible] = useState(false);
 
@@ -45,6 +49,10 @@ export default function TeacherProfileScreen() {
         points: profile.points || '',
         location: profile.location || '',
         rules: profile.rules || '',
+        experience: profile.experience || '',
+        pricePerHour: profile.pricePerHour || '',
+        availability: profile.availability || '',
+        bio: profile.bio || '',
       });
     }
   }, [profile]);
@@ -95,6 +103,10 @@ export default function TeacherProfileScreen() {
         points: formData.points.trim() || null,
         location: formData.location.trim() || null,
         rules: formData.rules.trim() || null,
+        experience: formData.experience.trim() || null,
+        pricePerHour: formData.pricePerHour.trim() || null,
+        availability: formData.availability.trim() || null,
+        bio: formData.bio.trim() || null,
       });
       setSuccess(true);
       setIsEditing(false);
@@ -113,6 +125,10 @@ export default function TeacherProfileScreen() {
       points: profile?.points || '',
       location: profile?.location || '',
       rules: profile?.rules || '',
+      experience: profile?.experience || '',
+      pricePerHour: profile?.pricePerHour || '',
+      availability: profile?.availability || '',
+      bio: profile?.bio || '',
     });
     setIsEditing(false);
     setError(null);
@@ -249,6 +265,41 @@ export default function TeacherProfileScreen() {
             multiline
             numberOfLines={6}
           />
+          <Text style={styles.label}>Experience (years)</Text>
+          <TextInput
+            style={styles.input}
+            value={formData.experience}
+            onChangeText={(t) => setFormData((prev) => ({ ...prev, experience: t }))}
+            placeholder="e.g. 5"
+            placeholderTextColor={colors.textDim}
+            keyboardType="number-pad"
+          />
+          <Text style={styles.label}>Price per hour (₪)</Text>
+          <TextInput
+            style={styles.input}
+            value={formData.pricePerHour}
+            onChangeText={(t) => setFormData((prev) => ({ ...prev, pricePerHour: t }))}
+            placeholder="e.g. 120"
+            placeholderTextColor={colors.textDim}
+            keyboardType="number-pad"
+          />
+          <Text style={styles.label}>Availability</Text>
+          <TextInput
+            style={styles.input}
+            value={formData.availability}
+            onChangeText={(t) => setFormData((prev) => ({ ...prev, availability: t }))}
+            placeholder="e.g. Sun–Thu, afternoons"
+            placeholderTextColor={colors.textDim}
+          />
+          <Text style={styles.label}>About me</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            value={formData.bio}
+            onChangeText={(t) => setFormData((prev) => ({ ...prev, bio: t }))}
+            placeholder="A short description students will see"
+            placeholderTextColor={colors.textDim}
+            multiline
+          />
           <View style={styles.row}>
             <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={handleSave} disabled={loading}>
               {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Save</Text>}
@@ -282,6 +333,24 @@ export default function TeacherProfileScreen() {
             <Text style={styles.fieldLabel}>Location</Text>
             <Text style={styles.fieldValue}>{profile.location || 'Not set'}</Text>
           </View>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Experience</Text>
+            <Text style={styles.fieldValue}>{profile.experience ? `${profile.experience} years` : 'Not set'}</Text>
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Price per hour</Text>
+            <Text style={styles.fieldValue}>{profile.pricePerHour ? `₪${profile.pricePerHour}` : 'Not set'}</Text>
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Availability</Text>
+            <Text style={styles.fieldValue}>{profile.availability || 'Not set'}</Text>
+          </View>
+          {formData.bio ? (
+            <View style={styles.rulesBox}>
+              <Text style={styles.rulesLabel}>👋 About me</Text>
+              <Text style={styles.rulesText}>{formData.bio}</Text>
+            </View>
+          ) : null}
           {formData.rules ? (
             <View style={styles.rulesBox}>
               <Text style={styles.rulesLabel}>📋 Rules</Text>

@@ -15,6 +15,7 @@ import { db } from '../../firebase';
 import { useFirebaseAuth } from '../../context/FirebaseAuth';
 import StarRating from '../../components/StarRating';
 import { SUBJECTS } from '../../constants/subjects';
+import { openWhatsApp } from '../../utils/whatsapp';
 import { colors } from '../../theme';
 
 const SUBJECT_OPTIONS = ['all', ...SUBJECTS];
@@ -29,6 +30,10 @@ type Teacher = {
   email?: string;
   phone?: string;
   rules?: string;
+  bio?: string;
+  experience?: string;
+  pricePerHour?: string;
+  availability?: string;
   averageRating?: number;
   ratingCount?: number;
   hasLessonsWithStudent?: boolean;
@@ -46,6 +51,7 @@ export default function StudentFindTeachersScreen() {
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
   const [submittingRating, setSubmittingRating] = useState<string | null>(null);
   const [userRatings, setUserRatings] = useState<Record<string, number>>({});
+  const [sortBy, setSortBy] = useState<'rating' | 'name'>('rating');
 
   const checkHasLessons = useCallback(async (teacherId: string, studentId: string): Promise<boolean> => {
     try {
@@ -111,6 +117,10 @@ export default function StudentFindTeachersScreen() {
             email: data.email,
             phone: data.phone,
             rules: data.rules,
+            bio: data.bio,
+            experience: data.experience,
+            pricePerHour: data.pricePerHour,
+            availability: data.availability,
             averageRating: average,
             ratingCount: count,
             hasLessonsWithStudent: hasLessons,
@@ -176,7 +186,7 @@ export default function StudentFindTeachersScreen() {
 
   const normalizedLocation = locationQuery.trim().toLowerCase();
   const filteredTeachers = useMemo(() => {
-    return teachers.filter((t) => {
+    const list = teachers.filter((t) => {
       const teacherSubjects = t.subjects?.length ? t.subjects : t.subject ? [t.subject] : [];
       const matchSubject =
         subject === 'all' || teacherSubjects.some((s) => s.toLowerCase() === subject.toLowerCase());
@@ -185,7 +195,14 @@ export default function StudentFindTeachersScreen() {
         !normalizedLocation || loc.startsWith(normalizedLocation) || loc.includes(normalizedLocation);
       return matchSubject && matchLoc;
     });
-  }, [teachers, subject, normalizedLocation]);
+    list.sort((a, b) => {
+      if (sortBy === 'name') return (a.fullName || '').localeCompare(b.fullName || '');
+      const byRating = (b.averageRating || 0) - (a.averageRating || 0);
+      if (byRating !== 0) return byRating;
+      return (b.ratingCount || 0) - (a.ratingCount || 0);
+    });
+    return list;
+  }, [teachers, subject, normalizedLocation, sortBy]);
 
   if (loading) {
     return (
@@ -222,6 +239,21 @@ export default function StudentFindTeachersScreen() {
           value={locationQuery}
           onChangeText={setLocationQuery}
         />
+        <Text style={styles.filterLabel}>Sort by</Text>
+        <View style={styles.sortRow}>
+          <TouchableOpacity
+            style={[styles.chip, sortBy === 'rating' && styles.chipActive]}
+            onPress={() => setSortBy('rating')}
+          >
+            <Text style={styles.chipText}>⭐ Top rated</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.chip, sortBy === 'name' && styles.chipActive]}
+            onPress={() => setSortBy('name')}
+          >
+            <Text style={styles.chipText}>Name (A–Z)</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {error ? <View style={styles.alertDanger}><Text style={styles.alertText}>{error}</Text></View> : null}
@@ -257,6 +289,15 @@ export default function StudentFindTeachersScreen() {
             <Text style={styles.meta}>Subjects: {teacher.subjects?.length ? teacher.subjects.join(', ') : teacher.subject || '—'}</Text>
             <Text style={styles.meta}>Units: {teacher.points || '—'}</Text>
             <Text style={styles.meta}>Location: {teacher.location || '—'}</Text>
+            {teacher.experience ? <Text style={styles.meta}>Experience: {teacher.experience} years</Text> : null}
+            {teacher.pricePerHour ? <Text style={styles.meta}>Price: ₪{teacher.pricePerHour}/hr</Text> : null}
+            {teacher.availability ? <Text style={styles.meta}>Availability: {teacher.availability}</Text> : null}
+            {teacher.bio ? (
+              <View style={styles.rulesBox}>
+                <Text style={styles.rulesLabel}>👋 About</Text>
+                <Text style={styles.rulesText}>{teacher.bio}</Text>
+              </View>
+            ) : null}
             {teacher.rules ? (
               <View style={styles.rulesBox}>
                 <Text style={styles.rulesLabel}>📋 Rules</Text>
@@ -284,6 +325,19 @@ export default function StudentFindTeachersScreen() {
                     <Text style={styles.contactBtnText}>
                       📞 {copiedPhone === teacher.phone ? '✓ Copied!' : teacher.phone}
                     </Text>
+                  </Pressable>
+                )}
+                {teacher.phone && (
+                  <Pressable
+                    style={styles.whatsappBtn}
+                    onPress={() =>
+                      openWhatsApp(
+                        teacher.phone!,
+                        `היי ${teacher.fullName || ''}, מצאתי אותך ב-SuperStudy ואשמח לתאם שיעור.`
+                      )
+                    }
+                  >
+                    <Text style={styles.whatsappBtnText}>💬 שלח/י הודעה ב-WhatsApp</Text>
                   </Pressable>
                 )}
               </View>
@@ -358,4 +412,14 @@ const styles = StyleSheet.create({
   },
   contactBtnCopied: { backgroundColor: colors.successBg, borderColor: 'rgba(34,197,94,0.5)' },
   contactBtnText: { color: colors.primaryLight, fontSize: 14 },
+  sortRow: { flexDirection: 'row', marginTop: 2 },
+  whatsappBtn: {
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.4)',
+    backgroundColor: colors.successBg,
+    marginBottom: 8,
+  },
+  whatsappBtnText: { color: colors.successLight, fontSize: 14, fontWeight: '600', textAlign: 'right' },
 });

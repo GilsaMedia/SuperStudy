@@ -24,6 +24,7 @@ import {
 import { db } from '../../firebase';
 import { useFirebaseAuth } from '../../context/FirebaseAuth';
 import StarRating from '../../components/StarRating';
+import { openWhatsApp } from '../../utils/whatsapp';
 import { colors } from '../../theme';
 
 type Teacher = {
@@ -36,6 +37,10 @@ type Teacher = {
   email?: string;
   phone?: string;
   rules?: string;
+  bio?: string;
+  experience?: string;
+  pricePerHour?: string;
+  availability?: string;
   averageRating?: number;
   ratingCount?: number;
   userRating?: number;
@@ -103,6 +108,10 @@ export default function StudentMyTeachersScreen() {
             email: teacherProfileData?.email,
             phone: teacherProfileData?.phone,
             rules: teacherProfileData?.rules,
+            bio: teacherProfileData?.bio,
+            experience: teacherProfileData?.experience,
+            pricePerHour: teacherProfileData?.pricePerHour,
+            availability: teacherProfileData?.availability,
             averageRating: average,
             ratingCount: count,
             userRating,
@@ -234,6 +243,15 @@ export default function StudentMyTeachersScreen() {
             <Text style={styles.meta}>Subjects: {teacher.subjects?.length ? teacher.subjects.join(', ') : teacher.subject || '—'}</Text>
             <Text style={styles.meta}>Units: {teacher.points || '—'}</Text>
             <Text style={styles.meta}>Location: {teacher.location || '—'}</Text>
+            {teacher.experience ? <Text style={styles.meta}>Experience: {teacher.experience} years</Text> : null}
+            {teacher.pricePerHour ? <Text style={styles.meta}>Price: ₪{teacher.pricePerHour}/hr</Text> : null}
+            {teacher.availability ? <Text style={styles.meta}>Availability: {teacher.availability}</Text> : null}
+            {teacher.bio ? (
+              <View style={styles.rulesBox}>
+                <Text style={styles.rulesLabel}>👋 About</Text>
+                <Text style={styles.rulesText}>{teacher.bio}</Text>
+              </View>
+            ) : null}
             {teacher.rules ? (
               <View style={styles.rulesBox}>
                 <Text style={styles.rulesLabel}>📋 Rules</Text>
@@ -251,6 +269,16 @@ export default function StudentMyTeachersScreen() {
                 {teacher.phone && (
                   <Pressable style={styles.contactBtn} onPress={() => copyToClipboard(teacher.phone!)}>
                     <Text style={styles.contactBtnText}>📞 {teacher.phone}</Text>
+                  </Pressable>
+                )}
+                {teacher.phone && (
+                  <Pressable
+                    style={styles.whatsappBtn}
+                    onPress={() =>
+                      openWhatsApp(teacher.phone!, `היי ${teacher.fullName || ''}, מדבר/ת מ-SuperStudy 🙂`)
+                    }
+                  >
+                    <Text style={styles.whatsappBtnText}>💬 שלח/י הודעה ב-WhatsApp</Text>
                   </Pressable>
                 )}
               </View>
@@ -308,6 +336,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   contactBtnText: { color: colors.primaryLight, fontSize: 14 },
+  whatsappBtn: {
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.4)',
+    backgroundColor: colors.successBg,
+    marginBottom: 8,
+  },
+  whatsappBtnText: { color: colors.successLight, fontSize: 14, fontWeight: '600', textAlign: 'right' },
   leaveBtn: {
     marginTop: 16,
     paddingVertical: 10,
