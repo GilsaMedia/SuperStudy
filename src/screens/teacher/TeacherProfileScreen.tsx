@@ -14,6 +14,8 @@ import { db } from '../../firebase';
 import { useFirebaseAuth } from '../../context/FirebaseAuth';
 import CitySelector from '../../components/CitySelector';
 import StarRating from '../../components/StarRating';
+import LanguageToggle from '../../components/LanguageToggle';
+import { useLanguage } from '../../context/Language';
 import { SUBJECTS } from '../../constants/subjects';
 import { colors } from '../../theme';
 
@@ -21,6 +23,7 @@ const POINTS = ['3', '4', '5'];
 
 export default function TeacherProfileScreen() {
   const { user, profile, refreshProfile } = useFirebaseAuth();
+  const { t } = useLanguage();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +93,7 @@ export default function TeacherProfileScreen() {
   const handleSave = async () => {
     if (!user) return;
     if (formData.subjects.length === 0) {
-      setError('Select at least one subject.');
+      setError(t('Select at least one subject.'));
       return;
     }
     setLoading(true);
@@ -112,7 +115,7 @@ export default function TeacherProfileScreen() {
       setIsEditing(false);
       await refreshProfile();
     } catch {
-      setError('Failed to update profile.');
+      setError(t('Failed to update profile.'));
     } finally {
       setLoading(false);
     }
@@ -138,7 +141,7 @@ export default function TeacherProfileScreen() {
   if (!profile) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.title}>Your Profile</Text>
+        <Text style={styles.title}>{t('Your Profile')}</Text>
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
@@ -146,45 +149,47 @@ export default function TeacherProfileScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Your Profile</Text>
+      <Text style={styles.title}>{t('Your Profile')}</Text>
       <Text style={styles.subtitle}>
-        {isEditing ? 'Edit your profile. Changes are visible to students.' : 'Review what students see.'}
+        {isEditing ? t('Edit your profile. Changes are visible to students.') : t('Review what students see.')}
       </Text>
 
       {error ? <View style={styles.alertDanger}><Text style={styles.alertText}>{error}</Text></View> : null}
-      {success ? <View style={styles.alertSuccess}><Text style={styles.alertText}>Profile updated!</Text></View> : null}
+      {success ? <View style={styles.alertSuccess}><Text style={styles.alertText}>{t('Profile updated!')}</Text></View> : null}
 
       {!isEditing && (
         <View style={styles.ratingBox}>
-          <Text style={styles.ratingLabel}>⭐ Your Rating</Text>
+          <Text style={styles.ratingLabel}>⭐ {t('Your Rating')}</Text>
           {loadingRatings ? (
             <ActivityIndicator size="small" color={colors.primary} />
           ) : ratingCount > 0 ? (
             <>
               <StarRating rating={averageRating} ratingCount={ratingCount} interactive={false} size="large" showCount />
               <Text style={styles.ratingDesc}>
-                Average from {ratingCount} {ratingCount === 1 ? 'student' : 'students'}.
+                {ratingCount === 1
+                  ? t('Average from {count} student.', { count: ratingCount })
+                  : t('Average from {count} students.', { count: ratingCount })}
               </Text>
             </>
           ) : (
-            <Text style={styles.ratingMuted}>No ratings yet. Students can rate after lessons.</Text>
+            <Text style={styles.ratingMuted}>{t('No ratings yet. Students can rate after lessons.')}</Text>
           )}
         </View>
       )}
 
       {isEditing ? (
         <>
-          <Text style={styles.label}>Name</Text>
+          <Text style={styles.label}>{t('Name')}</Text>
           <TextInput
             style={styles.input}
             value={formData.fullName}
-            onChangeText={(t) => setFormData((prev) => ({ ...prev, fullName: t }))}
-            placeholder="Full name"
+            onChangeText={(text) => setFormData((prev) => ({ ...prev, fullName: text }))}
+            placeholder={t('Full name')}
             placeholderTextColor={colors.textDim}
           />
-          <Text style={styles.label}>Email (read-only)</Text>
+          <Text style={styles.label}>{t('Email (read-only)')}</Text>
           <Text style={styles.readOnly}>{profile.email || '—'}</Text>
-          <Text style={styles.label}>Subjects</Text>
+          <Text style={styles.label}>{t('Subjects')}</Text>
           <TouchableOpacity
             style={styles.subjectSelector}
             onPress={() => setSubjectsModalVisible(true)}
@@ -192,8 +197,8 @@ export default function TeacherProfileScreen() {
           >
             <Text style={styles.subjectSelectorText}>
               {formData.subjects.length
-                ? formData.subjects.join(', ')
-                : 'Select subjects (you can choose multiple)'}
+                ? formData.subjects.map((s) => t(s)).join(', ')
+                : t('Select subjects (you can choose multiple)')}
             </Text>
           </TouchableOpacity>
           <Modal
@@ -204,7 +209,7 @@ export default function TeacherProfileScreen() {
           >
             <View style={styles.modalOverlay}>
               <View style={styles.modalCard}>
-                <Text style={styles.modalTitle}>Select subjects</Text>
+                <Text style={styles.modalTitle}>{t('Select subjects')}</Text>
                 <ScrollView style={styles.modalList}>
                   {SUBJECTS.map((s) => {
                     const checked = formData.subjects.includes(s);
@@ -225,7 +230,7 @@ export default function TeacherProfileScreen() {
                         <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
                           {checked ? <Text style={styles.checkboxCheck}>✓</Text> : null}
                         </View>
-                        <Text style={styles.checkboxLabel}>{s}</Text>
+                        <Text style={styles.checkboxLabel}>{t(s)}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -235,13 +240,13 @@ export default function TeacherProfileScreen() {
                     style={[styles.modalButton, styles.modalButtonPrimary]}
                     onPress={() => setSubjectsModalVisible(false)}
                   >
-                    <Text style={styles.modalButtonText}>Done</Text>
+                    <Text style={styles.modalButtonText}>{t('Done')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
           </Modal>
-          <Text style={styles.label}>Units</Text>
+          <Text style={styles.label}>{t('Units')}</Text>
           <View style={styles.chipRow}>
             {POINTS.map((p) => (
               <TouchableOpacity
@@ -253,115 +258,126 @@ export default function TeacherProfileScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          <Text style={styles.label}>Location</Text>
-          <CitySelector value={formData.location} onChange={(v) => setFormData((prev) => ({ ...prev, location: v }))} placeholder="Select city" />
-          <Text style={styles.label}>Rules</Text>
+          <Text style={styles.label}>{t('Location')}</Text>
+          <CitySelector value={formData.location} onChange={(v) => setFormData((prev) => ({ ...prev, location: v }))} placeholder={t('Select city')} />
+          <Text style={styles.label}>{t('Rules')}</Text>
           <TextInput
             style={[styles.input, styles.textArea]}
             value={formData.rules}
-            onChangeText={(t) => setFormData((prev) => ({ ...prev, rules: t }))}
-            placeholder="Teaching rules and guidelines..."
+            onChangeText={(text) => setFormData((prev) => ({ ...prev, rules: text }))}
+            placeholder={t('Teaching rules and guidelines...')}
             placeholderTextColor={colors.textDim}
             multiline
             numberOfLines={6}
           />
-          <Text style={styles.label}>Experience (years)</Text>
+          <Text style={styles.label}>{t('Experience (years)')}</Text>
           <TextInput
             style={styles.input}
             value={formData.experience}
-            onChangeText={(t) => setFormData((prev) => ({ ...prev, experience: t }))}
-            placeholder="e.g. 5"
+            onChangeText={(text) => setFormData((prev) => ({ ...prev, experience: text }))}
+            placeholder={t('e.g. 5')}
             placeholderTextColor={colors.textDim}
             keyboardType="number-pad"
           />
-          <Text style={styles.label}>Price per hour (₪)</Text>
+          <Text style={styles.label}>{t('Price per hour (₪)')}</Text>
           <TextInput
             style={styles.input}
             value={formData.pricePerHour}
-            onChangeText={(t) => setFormData((prev) => ({ ...prev, pricePerHour: t }))}
-            placeholder="e.g. 120"
+            onChangeText={(text) => setFormData((prev) => ({ ...prev, pricePerHour: text }))}
+            placeholder={t('e.g. 120')}
             placeholderTextColor={colors.textDim}
             keyboardType="number-pad"
           />
-          <Text style={styles.label}>Availability</Text>
+          <Text style={styles.label}>{t('Availability')}</Text>
           <TextInput
             style={styles.input}
             value={formData.availability}
-            onChangeText={(t) => setFormData((prev) => ({ ...prev, availability: t }))}
-            placeholder="e.g. Sun–Thu, afternoons"
+            onChangeText={(text) => setFormData((prev) => ({ ...prev, availability: text }))}
+            placeholder={t('e.g. Sun–Thu, afternoons')}
             placeholderTextColor={colors.textDim}
           />
-          <Text style={styles.label}>About me</Text>
+          <Text style={styles.label}>{t('About me')}</Text>
           <TextInput
             style={[styles.input, styles.textArea]}
             value={formData.bio}
-            onChangeText={(t) => setFormData((prev) => ({ ...prev, bio: t }))}
-            placeholder="A short description students will see"
+            onChangeText={(text) => setFormData((prev) => ({ ...prev, bio: text }))}
+            placeholder={t('A short description students will see')}
             placeholderTextColor={colors.textDim}
             multiline
           />
           <View style={styles.row}>
             <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={handleSave} disabled={loading}>
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Save</Text>}
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{t('Save')}</Text>}
             </TouchableOpacity>
             <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={handleCancel} disabled={loading}>
-              <Text style={styles.btnTextSecondary}>Cancel</Text>
+              <Text style={styles.btnTextSecondary}>{t('Cancel')}</Text>
             </TouchableOpacity>
           </View>
         </>
       ) : (
         <>
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Name</Text>
-            <Text style={styles.fieldValue}>{profile.fullName || 'Not set'}</Text>
+            <Text style={styles.fieldLabel}>{t('Name')}</Text>
+            <Text style={styles.fieldValue}>{profile.fullName || t('Not set')}</Text>
           </View>
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Email</Text>
-            <Text style={styles.fieldValue}>{profile.email || 'Not set'}</Text>
+            <Text style={styles.fieldLabel}>{t('Email')}</Text>
+            <Text style={styles.fieldValue}>{profile.email || t('Not set')}</Text>
           </View>
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Subjects</Text>
+            <Text style={styles.fieldLabel}>{t('Subjects')}</Text>
             <Text style={styles.fieldValue}>
-              {profile.subjects?.length ? profile.subjects.join(', ') : profile.subject || 'Not set'}
+              {profile.subjects?.length
+                ? profile.subjects.map((s) => t(s)).join(', ')
+                : profile.subject
+                  ? t(profile.subject)
+                  : t('Not set')}
             </Text>
           </View>
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Units</Text>
+            <Text style={styles.fieldLabel}>{t('Units')}</Text>
             <Text style={styles.fieldValue}>{profile.points || '—'}</Text>
           </View>
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Location</Text>
-            <Text style={styles.fieldValue}>{profile.location || 'Not set'}</Text>
+            <Text style={styles.fieldLabel}>{t('Location')}</Text>
+            <Text style={styles.fieldValue}>{profile.location || t('Not set')}</Text>
           </View>
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Experience</Text>
-            <Text style={styles.fieldValue}>{profile.experience ? `${profile.experience} years` : 'Not set'}</Text>
+            <Text style={styles.fieldLabel}>{t('Experience')}</Text>
+            <Text style={styles.fieldValue}>
+              {profile.experience ? t('{count} years', { count: profile.experience }) : t('Not set')}
+            </Text>
           </View>
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Price per hour</Text>
-            <Text style={styles.fieldValue}>{profile.pricePerHour ? `₪${profile.pricePerHour}` : 'Not set'}</Text>
+            <Text style={styles.fieldLabel}>{t('Price per hour')}</Text>
+            <Text style={styles.fieldValue}>{profile.pricePerHour ? `₪${profile.pricePerHour}` : t('Not set')}</Text>
           </View>
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Availability</Text>
-            <Text style={styles.fieldValue}>{profile.availability || 'Not set'}</Text>
+            <Text style={styles.fieldLabel}>{t('Availability')}</Text>
+            <Text style={styles.fieldValue}>{profile.availability || t('Not set')}</Text>
           </View>
           {formData.bio ? (
             <View style={styles.rulesBox}>
-              <Text style={styles.rulesLabel}>👋 About me</Text>
+              <Text style={styles.rulesLabel}>👋 {t('About me')}</Text>
               <Text style={styles.rulesText}>{formData.bio}</Text>
             </View>
           ) : null}
           {formData.rules ? (
             <View style={styles.rulesBox}>
-              <Text style={styles.rulesLabel}>📋 Rules</Text>
+              <Text style={styles.rulesLabel}>📋 {t('Rules')}</Text>
               <Text style={styles.rulesText}>{formData.rules}</Text>
             </View>
           ) : null}
           <TouchableOpacity style={styles.editBtn} onPress={() => setIsEditing(true)}>
-            <Text style={styles.editBtnText}>Edit Profile</Text>
+            <Text style={styles.editBtnText}>{t('Edit Profile')}</Text>
           </TouchableOpacity>
         </>
       )}
+
+      <View style={styles.languageBox}>
+        <Text style={styles.rulesLabel}>🌐 {t('Language')}</Text>
+        <LanguageToggle variant="full" />
+      </View>
     </ScrollView>
   );
 }
@@ -436,6 +452,7 @@ const styles = StyleSheet.create({
   rulesText: { color: colors.textMuted, fontSize: 14, lineHeight: 22 },
   editBtn: { marginTop: 24, backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 10, alignItems: 'center' },
   editBtnText: { color: colors.white, fontWeight: '700' },
+  languageBox: { marginTop: 32, paddingTop: 20, borderTopWidth: 1, borderTopColor: colors.border },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15,23,42,0.8)',

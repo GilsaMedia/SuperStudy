@@ -2,14 +2,21 @@ import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useFirebaseAuth } from '../context/FirebaseAuth';
+import { useLanguage } from '../context/Language';
+import { needsEmailVerification } from '../auth';
 import { colors } from '../theme';
 
 export default function HomeScreen() {
-  const { user, profile, loading } = useFirebaseAuth();
+  const { user, profile, loading, profileLoading } = useFirebaseAuth();
+  const { t } = useLanguage();
   const navigation = useNavigation<any>();
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || profileLoading) return;
+    if (needsEmailVerification(user)) {
+      navigation.replace('VerifyEmail');
+      return;
+    }
     if (profile?.role === 'student') {
       navigation.replace('StudentTabs');
       return;
@@ -22,13 +29,13 @@ export default function HomeScreen() {
       // Has auth but no Firestore role
       return;
     }
-  }, [profile, loading, user, navigation]);
+  }, [profile, loading, profileLoading, user, navigation]);
 
-  if (loading) {
+  if (loading || (user && profileLoading) || needsEmailVerification(user)) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Loading your profile...</Text>
+        <Text style={styles.loadingText}>{t('Loading your profile...')}</Text>
       </View>
     );
   }
@@ -36,12 +43,12 @@ export default function HomeScreen() {
   if (user && !profile?.role) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Role Required</Text>
+        <Text style={styles.title}>{t('Role Required')}</Text>
         <Text style={styles.subtitle}>
-          Your account needs to be set up as a student or a teacher. Please contact support or sign up again with the correct role.
+          {t('Your account needs to be set up as a student or a teacher. Please contact support or sign up again with the correct role.')}
         </Text>
         <TouchableOpacity style={styles.btnPrimary} onPress={() => navigation.navigate('Login')}>
-          <Text style={styles.btnText}>Switch account</Text>
+          <Text style={styles.btnText}>{t('Switch account')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -54,28 +61,30 @@ export default function HomeScreen() {
       <Text style={styles.brand}>SuperStudy</Text>
       {user ? (
         <>
-          <Text style={styles.title}>{`Hello${displayName ? ` ${displayName}` : ''}`}</Text>
-          <Text style={styles.subtitle}>More personalized content is coming soon.</Text>
+          <Text style={styles.title}>
+            {displayName ? t('Hello {name}', { name: displayName }) : t('Hello')}
+          </Text>
+          <Text style={styles.subtitle}>{t('More personalized content is coming soon.')}</Text>
         </>
       ) : (
         <>
-          <Text style={styles.title}>Welcome to SuperStudy</Text>
-          <Text style={styles.subtitle}>Your hub to study smarter and track your progress.</Text>
+          <Text style={styles.title}>{t('Welcome to SuperStudy')}</Text>
+          <Text style={styles.subtitle}>{t('Your hub to study smarter and track your progress.')}</Text>
           <TouchableOpacity
             style={styles.btnPrimary}
             onPress={() => navigation.navigate('Login')}
           >
-            <Text style={styles.btnText}>Log in</Text>
+            <Text style={styles.btnText}>{t('Log in')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.btnSecondary}
             onPress={() => navigation.navigate('Signup')}
           >
-            <Text style={styles.btnTextSecondary}>Create account</Text>
+            <Text style={styles.btnTextSecondary}>{t('Create account')}</Text>
           </TouchableOpacity>
         </>
       )}
-      <Text style={styles.footer}>By continuing you agree to our Terms and Privacy Policy.</Text>
+      <Text style={styles.footer}>{t('By continuing you agree to our Terms and Privacy Policy.')}</Text>
     </View>
   );
 }

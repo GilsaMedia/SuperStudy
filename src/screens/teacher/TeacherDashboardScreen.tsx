@@ -6,6 +6,7 @@ import { db } from '../../firebase';
 import { useFirebaseAuth } from '../../context/FirebaseAuth';
 import { openGoogleCalendar } from '../../utils/googleCalendar';
 import StarRating from '../../components/StarRating';
+import { useLanguage } from '../../context/Language';
 import { colors } from '../../theme';
 
 type CalendarAppointment = {
@@ -21,6 +22,8 @@ type CalendarAppointment = {
 export default function TeacherDashboardScreen() {
   const { user, profile } = useFirebaseAuth();
   const navigation = useNavigation<any>();
+  const { t, language } = useLanguage();
+  const locale = language === 'he' ? 'he-IL' : 'en-US';
   const [studentCount, setStudentCount] = useState<number | null>(null);
   const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState(true);
@@ -108,61 +111,73 @@ export default function TeacherDashboardScreen() {
 
   const nextAppointment = appointments[0];
   const nextLessonValue = nextAppointment
-    ? `${nextAppointment.studentName || 'Student'} - ${nextAppointment.dateTime.toDate().toLocaleString(undefined, {
+    ? `${nextAppointment.studentName || t('Student')} - ${nextAppointment.dateTime.toDate().toLocaleString(locale, {
         month: 'short',
         day: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
       })}`
-    : 'You have no lessons scheduled today.';
+    : t('You have no lessons scheduled today.');
+
+  const subjectsText = profile?.subjects?.length
+    ? profile.subjects.map((s) => t(s)).join(', ')
+    : profile?.subject
+      ? t(profile.subject)
+      : t('Not set');
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Welcome, {profile?.fullName || 'Teacher'} 👋</Text>
+      <Text style={styles.title}>{t('Welcome, {name}', { name: profile?.fullName || t('Teacher') })} 👋</Text>
       <Text style={styles.subtitle}>
-        Subjects: {profile?.subjects?.length ? profile.subjects.join(', ') : profile?.subject || 'Not set'} · Units: {profile?.points || '—'} · Location: {profile?.location || '—'}
+        {t('Subjects: {subjects} · Units: {units} · Location: {location}', {
+          subjects: subjectsText,
+          units: profile?.points || '—',
+          location: profile?.location || '—',
+        })}
       </Text>
 
       <View style={styles.grid}>
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Total Students</Text>
+          <Text style={styles.cardTitle}>{t('Total Students')}</Text>
           <Text style={styles.cardValue}>{studentCount === null ? '—' : studentCount}</Text>
-          <Text style={styles.cardDesc}>Number of students linked to you.</Text>
+          <Text style={styles.cardDesc}>{t('Number of students linked to you.')}</Text>
         </View>
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Your Rating</Text>
+          <Text style={styles.cardTitle}>{t('Your Rating')}</Text>
           {loadingRatings ? (
             <ActivityIndicator size="small" color={colors.primary} />
           ) : ratingCount > 0 ? (
             <StarRating rating={averageRating} ratingCount={ratingCount} interactive={false} size="medium" showCount />
           ) : (
-            <Text style={styles.cardMuted}>No ratings yet</Text>
+            <Text style={styles.cardMuted}>{t('No ratings yet')}</Text>
           )}
           <Text style={styles.cardDesc}>
             {ratingCount > 0
-              ? `Average from ${ratingCount} ${ratingCount === 1 ? 'student' : 'students'}.`
-              : 'Students can rate you after lessons.'}
+              ? ratingCount === 1
+                ? t('Average from {count} student.', { count: ratingCount })
+                : t('Average from {count} students.', { count: ratingCount })
+              : t('Students can rate you after lessons.')}
           </Text>
         </View>
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Next Lesson</Text>
+          <Text style={styles.cardTitle}>{t('Next Lesson')}</Text>
           <Text style={styles.cardValue}>{nextLessonValue}</Text>
           <Text style={styles.cardDesc}>
-            {nextAppointment ? 'Schedule more from Students tab.' : 'Add lessons from Students tab.'}
+            {nextAppointment ? t('Schedule more from Students tab.') : t('Add lessons from Students tab.')}
           </Text>
         </View>
       </View>
 
       <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('TeacherStudents')}>
-        <Text style={styles.linkBtnText}>View Students</Text>
+        <Text style={styles.linkBtnText}>{t('View Students')}</Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.linkBtn} onPress={() => navigation.navigate('TeacherProfile')}>
-        <Text style={styles.linkBtnText}>Edit Profile</Text>
+        <Text style={styles.linkBtnText}>{t('Edit Profile')}</Text>
       </TouchableOpacity>
 
       {appointments.length > 0 && (
         <View style={styles.appointmentsCard}>
-          <Text style={styles.appointmentsTitle}>📅 Upcoming Appointments</Text>
+          <Text style={styles.appointmentsTitle}>📅 {t('Upcoming Appointments')}</Text>
           {appointments.slice(0, 5).map((apt) => {
             const aptDate = apt.dateTime.toDate();
             const isToday = aptDate.toDateString() === new Date().toDateString();
@@ -170,11 +185,11 @@ export default function TeacherDashboardScreen() {
               <View key={apt.id} style={styles.aptRow}>
                 <View style={styles.aptInfo}>
                   <View style={styles.aptHeader}>
-                    <Text style={styles.aptStudent}>{apt.studentName || 'Student'}</Text>
-                    {isToday && <View style={styles.badge}><Text style={styles.badgeText}>Today</Text></View>}
+                    <Text style={styles.aptStudent}>{apt.studentName || t('Student')}</Text>
+                    {isToday && <View style={styles.badge}><Text style={styles.badgeText}>{t('Today')}</Text></View>}
                   </View>
                   <Text style={styles.aptDate}>
-                    {aptDate.toLocaleString(undefined, {
+                    {aptDate.toLocaleString(locale, {
                       weekday: 'long',
                       month: 'long',
                       day: 'numeric',
@@ -188,14 +203,14 @@ export default function TeacherDashboardScreen() {
                   style={styles.calBtn}
                   onPress={() =>
                     openGoogleCalendar({
-                      title: `Appointment with ${apt.studentName || 'Student'}`,
+                      title: t('Appointment with {name}', { name: apt.studentName || t('Student') }),
                       description: apt.notes || '',
                       startTime: aptDate,
                       endTime: new Date(aptDate.getTime() + 60 * 60 * 1000),
                     })
                   }
                 >
-                  <Text style={styles.calBtnText}>📅 Add to Calendar</Text>
+                  <Text style={styles.calBtnText}>📅 {t('Add to Calendar')}</Text>
                 </TouchableOpacity>
               </View>
             );

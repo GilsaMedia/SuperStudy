@@ -26,6 +26,7 @@ import { useFirebaseAuth } from '../../context/FirebaseAuth';
 import StarRating from '../../components/StarRating';
 import { openWhatsApp } from '../../utils/whatsapp';
 import { colors } from '../../theme';
+import { useLanguage } from '../../context/Language';
 
 type Teacher = {
   id: string;
@@ -48,6 +49,7 @@ type Teacher = {
 
 export default function StudentMyTeachersScreen() {
   const { profile, user } = useFirebaseAuth();
+  const { t } = useLanguage();
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -119,13 +121,13 @@ export default function StudentMyTeachersScreen() {
         }
         setTeachers(list);
       } catch {
-        setError('Failed to load your teachers.');
+        setError(t('Failed to load your teachers.'));
       } finally {
         setLoading(false);
       }
     };
     void load();
-  }, [profile?.uid, user, fetchTeacherRatings]);
+  }, [profile?.uid, user, fetchTeacherRatings, t]);
 
   const handleRating = async (teacherId: string, rating: number) => {
     if (!user || profile?.role !== 'student') return;
@@ -141,14 +143,14 @@ export default function StudentMyTeachersScreen() {
       });
       const { average, count } = await fetchTeacherRatings(teacherId, user.uid);
       setTeachers((prev) =>
-        prev.map((t) =>
-          t.id === teacherId ? { ...t, averageRating: average, ratingCount: count, userRating: rating } : t
+        prev.map((item) =>
+          item.id === teacherId ? { ...item, averageRating: average, ratingCount: count, userRating: rating } : item
         )
       );
-      setSuccess('Rating submitted!');
+      setSuccess(t('Rating submitted!'));
       setTimeout(() => setSuccess(null), 3000);
     } catch {
-      setError('Failed to submit rating.');
+      setError(t('Failed to submit rating.'));
     } finally {
       setSubmittingRating(null);
     }
@@ -156,12 +158,12 @@ export default function StudentMyTeachersScreen() {
 
   const leaveTeacher = (teacherId: string, teacherName: string) => {
     Alert.alert(
-      'Leave teacher',
-      `Are you sure you want to leave ${teacherName}? All lessons will be deleted.`,
+      t('Leave teacher'),
+      t('Are you sure you want to leave {name}? All lessons will be deleted.', { name: teacherName }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('Cancel'), style: 'cancel' },
         {
-          text: 'Leave',
+          text: t('Leave'),
           style: 'destructive',
           onPress: async () => {
             if (!profile?.uid) return;
@@ -185,11 +187,11 @@ export default function StudentMyTeachersScreen() {
               });
               batch.delete(doc(db, 'users', teacherId, 'students', profile.uid));
               await batch.commit();
-              setTeachers((prev) => prev.filter((t) => t.id !== teacherId));
-              setSuccess(`Left ${teacherName}.`);
+              setTeachers((prev) => prev.filter((item) => item.id !== teacherId));
+              setSuccess(t('Left {name}.', { name: teacherName }));
               setTimeout(() => setSuccess(null), 3000);
             } catch {
-              setError('Failed to leave teacher.');
+              setError(t('Failed to leave teacher.'));
             }
           },
         },
@@ -203,15 +205,15 @@ export default function StudentMyTeachersScreen() {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Loading your teachers…</Text>
+        <Text style={styles.loadingText}>{t('Loading your teachers…')}</Text>
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>My Teachers</Text>
-      <Text style={styles.subtitle}>Teachers who have added you as their student.</Text>
+      <Text style={styles.title}>{t('My Teachers')}</Text>
+      <Text style={styles.subtitle}>{t('Teachers who have added you as their student.')}</Text>
 
       {error ? <View style={styles.alertDanger}><Text style={styles.alertText}>{error}</Text></View> : null}
       {success ? <View style={styles.alertSuccess}><Text style={styles.alertText}>{success}</Text></View> : null}
@@ -219,13 +221,13 @@ export default function StudentMyTeachersScreen() {
       {teachers.length === 0 ? (
         <View style={styles.empty}>
           <Text style={styles.emptyEmoji}>👨‍🏫</Text>
-          <Text style={styles.emptyTitle}>No teachers yet</Text>
-          <Text style={styles.emptyText}>Teachers will appear here once they add you.</Text>
+          <Text style={styles.emptyTitle}>{t('No teachers yet')}</Text>
+          <Text style={styles.emptyText}>{t('Teachers will appear here once they add you.')}</Text>
         </View>
       ) : (
         teachers.map((teacher) => (
           <View key={teacher.id} style={styles.card}>
-            <Text style={styles.teacherName}>{teacher.fullName || 'Unnamed Teacher'}</Text>
+            <Text style={styles.teacherName}>{teacher.fullName || t('Unnamed Teacher')}</Text>
             <View style={styles.ratingRow}>
               <StarRating
                 rating={teacher.averageRating || 0}
@@ -238,29 +240,37 @@ export default function StudentMyTeachersScreen() {
               />
             </View>
             {submittingRating === teacher.id && (
-              <Text style={styles.submitting}>Submitting...</Text>
+              <Text style={styles.submitting}>{t('Submitting...')}</Text>
             )}
-            <Text style={styles.meta}>Subjects: {teacher.subjects?.length ? teacher.subjects.join(', ') : teacher.subject || '—'}</Text>
-            <Text style={styles.meta}>Units: {teacher.points || '—'}</Text>
-            <Text style={styles.meta}>Location: {teacher.location || '—'}</Text>
-            {teacher.experience ? <Text style={styles.meta}>Experience: {teacher.experience} years</Text> : null}
-            {teacher.pricePerHour ? <Text style={styles.meta}>Price: ₪{teacher.pricePerHour}/hr</Text> : null}
-            {teacher.availability ? <Text style={styles.meta}>Availability: {teacher.availability}</Text> : null}
+            <Text style={styles.meta}>
+              {t('Subjects: {value}', {
+                value: teacher.subjects?.length
+                  ? teacher.subjects.map((s) => t(s)).join(', ')
+                  : teacher.subject
+                    ? t(teacher.subject)
+                    : '—',
+              })}
+            </Text>
+            <Text style={styles.meta}>{t('Units: {value}', { value: teacher.points || '—' })}</Text>
+            <Text style={styles.meta}>{t('Location: {value}', { value: teacher.location || '—' })}</Text>
+            {teacher.experience ? <Text style={styles.meta}>{t('Experience: {years} years', { years: teacher.experience })}</Text> : null}
+            {teacher.pricePerHour ? <Text style={styles.meta}>{t('Price: ₪{price}/hr', { price: teacher.pricePerHour })}</Text> : null}
+            {teacher.availability ? <Text style={styles.meta}>{t('Availability: {value}', { value: teacher.availability })}</Text> : null}
             {teacher.bio ? (
               <View style={styles.rulesBox}>
-                <Text style={styles.rulesLabel}>👋 About</Text>
+                <Text style={styles.rulesLabel}>{t('👋 About')}</Text>
                 <Text style={styles.rulesText}>{teacher.bio}</Text>
               </View>
             ) : null}
             {teacher.rules ? (
               <View style={styles.rulesBox}>
-                <Text style={styles.rulesLabel}>📋 Rules</Text>
+                <Text style={styles.rulesLabel}>{t('📋 Rules')}</Text>
                 <Text style={styles.rulesText}>{teacher.rules}</Text>
               </View>
             ) : null}
             {(teacher.email || teacher.phone) && (
               <View style={styles.contactBox}>
-                <Text style={styles.contactLabel}>Contact</Text>
+                <Text style={styles.contactLabel}>{t('Contact')}</Text>
                 {teacher.email && (
                   <Pressable style={styles.contactBtn} onPress={() => copyToClipboard(teacher.email!)}>
                     <Text style={styles.contactBtnText}>📧 {teacher.email}</Text>
@@ -278,16 +288,16 @@ export default function StudentMyTeachersScreen() {
                       openWhatsApp(teacher.phone!, `היי ${teacher.fullName || ''}, מדבר/ת מ-SuperStudy 🙂`)
                     }
                   >
-                    <Text style={styles.whatsappBtnText}>💬 שלח/י הודעה ב-WhatsApp</Text>
+                    <Text style={styles.whatsappBtnText}>{t('💬 Message on WhatsApp')}</Text>
                   </Pressable>
                 )}
               </View>
             )}
             <TouchableOpacity
               style={styles.leaveBtn}
-              onPress={() => leaveTeacher(teacher.id, teacher.fullName || 'this teacher')}
+              onPress={() => leaveTeacher(teacher.id, teacher.fullName || t('this teacher'))}
             >
-              <Text style={styles.leaveBtnText}>🚪 Leave Teacher</Text>
+              <Text style={styles.leaveBtnText}>{t('🚪 Leave Teacher')}</Text>
             </TouchableOpacity>
           </View>
         ))

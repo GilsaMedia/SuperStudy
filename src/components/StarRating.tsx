@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { useLanguage } from '../context/Language';
 import { colors } from '../theme';
 
 type StarRatingProps = {
@@ -23,6 +24,7 @@ export default function StarRating({
   showCount = true,
   userRating: initialUserRating,
 }: StarRatingProps) {
+  const { t } = useLanguage();
   const [userRating, setUserRating] = React.useState<number | null>(initialUserRating ?? null);
   React.useEffect(() => {
     if (initialUserRating !== undefined) setUserRating(initialUserRating);
@@ -63,10 +65,11 @@ export default function StarRating({
           {ratingCount > 0 ? (
             <>
               <Text style={styles.countBold}>{(Math.round(rating * 2) / 2).toFixed(1)}</Text>
-              {' '}({ratingCount} {ratingCount === 1 ? 'rating' : 'ratings'})
+              {' '}
+              {ratingCount === 1 ? t('(1 rating)') : t('({count} ratings)', { count: ratingCount })}
             </>
           ) : (
-            <Text style={styles.countMuted}>No ratings yet</Text>
+            <Text style={styles.countMuted}>{t('No ratings yet')}</Text>
           )}
         </Text>
       )}

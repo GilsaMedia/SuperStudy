@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useLanguage } from '../context/Language';
 import { colors } from '../theme';
 
 type CityOption = { name: string; displayName: string; district?: string };
@@ -59,6 +60,7 @@ export default function CitySelector({
   onChange,
   placeholder = 'Select a city',
 }: CitySelectorProps) {
+  const { t } = useLanguage();
   const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<CityOption[]>([]);
@@ -109,7 +111,7 @@ export default function CitySelector({
         activeOpacity={0.8}
       >
         <Text style={value ? styles.triggerText : styles.triggerPlaceholder}>
-          {value || placeholder}
+          {value || t(placeholder)}
         </Text>
         <Text style={styles.triggerChevron}>▼</Text>
       </TouchableOpacity>
@@ -131,13 +133,13 @@ export default function CitySelector({
             onPress={handleCancel}
           />
           <View style={styles.modalCard} pointerEvents="box-none">
-            <Text style={styles.modalTitle}>Choose city</Text>
-            <Text style={styles.modalHint}>Search for a city in Israel (min. 2 letters)</Text>
+            <Text style={styles.modalTitle}>{t('Choose city')}</Text>
+            <Text style={styles.modalHint}>{t('Search for a city in Israel (min. 2 letters)')}</Text>
             <TextInput
               style={styles.searchInput}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="e.g. Tel Aviv, Jerusalem..."
+              placeholder={t('e.g. Tel Aviv, Jerusalem...')}
               placeholderTextColor={colors.textDim}
               autoCapitalize="words"
               autoCorrect={false}
@@ -147,12 +149,12 @@ export default function CitySelector({
               {loading ? (
                 <View style={styles.loadingWrap}>
                   <ActivityIndicator size="small" color={colors.primary} />
-                  <Text style={styles.loadingText}>Searching...</Text>
+                  <Text style={styles.loadingText}>{t('Searching...')}</Text>
                 </View>
               ) : searchQuery.trim().length < 2 ? (
-                <Text style={styles.emptyText}>Type at least 2 letters to search</Text>
+                <Text style={styles.emptyText}>{t('Type at least 2 letters to search')}</Text>
               ) : results.length === 0 ? (
-                <Text style={styles.emptyText}>No cities found. Try another search.</Text>
+                <Text style={styles.emptyText}>{t('No cities found. Try another search.')}</Text>
               ) : (
                 <FlatList
                   data={results}
@@ -175,7 +177,7 @@ export default function CitySelector({
               )}
             </View>
             <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel} activeOpacity={0.8}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
+              <Text style={styles.cancelBtnText}>{t('Cancel')}</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>

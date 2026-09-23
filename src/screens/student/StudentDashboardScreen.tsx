@@ -13,6 +13,9 @@ import { db } from '../../firebase';
 import { useFirebaseAuth } from '../../context/FirebaseAuth';
 import { openGoogleCalendar } from '../../utils/googleCalendar';
 import { colors } from '../../theme';
+import { useLanguage } from '../../context/Language';
+import LearningResumeCard from '../../components/LearningResumeCard';
+import { LearningResume, parseLearningResume } from '../../utils/learningResume';
 
 type CalendarAppointment = {
   id: string;
@@ -26,9 +29,11 @@ type CalendarAppointment = {
 
 export default function StudentDashboardScreen() {
   const { profile } = useFirebaseAuth();
+  const { t, language } = useLanguage();
   const navigation = useNavigation<any>();
   const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [resume, setResume] = useState<LearningResume | null>(profile?.learningResume ?? null);
 
   useEffect(() => {
     if (!profile?.uid) {
@@ -68,18 +73,37 @@ export default function StudentDashboardScreen() {
     return () => unsub();
   }, [profile?.uid]);
 
+  useEffect(() => {
+    if (!profile?.uid) {
+      setResume(null);
+      return;
+    }
+    const unsub = onSnapshot(
+      doc(db, 'users', profile.uid),
+      (snap) => {
+        setResume(parseLearningResume(snap.data()?.learningResume));
+      },
+      () => setResume(profile.learningResume ?? null)
+    );
+    return () => unsub();
+  }, [profile?.uid, profile?.learningResume]);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Welcome back, {profile?.fullName || 'Student'} 👋</Text>
-      <Text style={styles.subtitle}>
-        View your upcoming appointments and manage your learning journey.
+      <Text style={styles.title}>
+        {t('Welcome back, {name} 👋', { name: profile?.fullName || t('Student') })}
       </Text>
+      <Text style={styles.subtitle}>
+        {t('View your upcoming appointments and manage your learning journey.')}
+      </Text>
+
+      <LearningResumeCard resume={resume} audience="student" />
 
       {loading ? (
         <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
       ) : appointments.length > 0 ? (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>📅 Upcoming Appointments</Text>
+          <Text style={styles.cardTitle}>{t('📅 Upcoming Appointments')}</Text>
           {appointments.slice(0, 5).map((apt) => {
             const aptDate = apt.dateTime.toDate();
             const isToday = aptDate.toDateString() === new Date().toDateString();
@@ -87,11 +111,11 @@ export default function StudentDashboardScreen() {
               <View key={apt.id} style={styles.aptRow}>
                 <View style={styles.aptInfo}>
                   <View style={styles.aptHeader}>
-                    <Text style={styles.aptTeacher}>{apt.teacherName || 'Teacher'}</Text>
-                    {isToday && <View style={styles.badge}><Text style={styles.badgeText}>Today</Text></View>}
+                    <Text style={styles.aptTeacher}>{apt.teacherName || t('Teacher')}</Text>
+                    {isToday && <View style={styles.badge}><Text style={styles.badgeText}>{t('Today')}</Text></View>}
                   </View>
                   <Text style={styles.aptDate}>
-                    {aptDate.toLocaleString(undefined, {
+                    {aptDate.toLocaleString(language === 'he' ? 'he-IL' : 'en-US', {
                       weekday: 'long',
                       month: 'long',
                       day: 'numeric',
@@ -105,35 +129,36 @@ export default function StudentDashboardScreen() {
                   style={styles.calBtn}
                   onPress={() =>
                     openGoogleCalendar({
-                      title: `Appointment with ${apt.teacherName || 'Teacher'}`,
+                      title: t('Appointment with {name}', { name: apt.teacherName || t('Teacher') }),
                       description: apt.notes || '',
                       startTime: aptDate,
                       endTime: new Date(aptDate.getTime() + 60 * 60 * 1000),
                     })
                   }
                 >
-                  <Text style={styles.calBtnText}>📅 Add to Calendar</Text>
+                  <Text style={styles.calBtnText}>{t('📅 Add to Calendar')}</Text>
                 </TouchableOpacity>
               </View>
             );
           })}
           {appointments.length > 5 && (
-            <Text style={styles.more}>+ {appointments.length - 5} more</Text>
+            <Text style={styles.more}>{t('+ {count} more', { count: appointments.length - 5 })}</Text>
           )}
         </View>
       ) : (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyEmoji}>📅</Text>
-          <Text style={styles.emptyTitle}>No Upcoming Appointments</Text>
-          <Text style={styles.emptyText}>Your teachers will schedule appointments here.</Text>
+          <Text style={styles.emptyTitle}>{t('No Upcoming Appointments')}</Text>
+          <Text style={styles.emptyText}>{t('Your teachers will schedule appointments here.')}</Text>
         </View>
       )}
 
       <View style={styles.card}>
-        <Text style={styles.aboutTitle}>About SuperStudy</Text>
+        <Text style={styles.aboutTitle}>{t('About SuperStudy')}</Text>
         <Text style={styles.aboutText}>
-          SuperStudy brings everything you need for school into one place. From this dashboard you can
-          move between tools and get support from real teachers.
+          {t(
+            'SuperStudy brings everything you need for school into one place. From this dashboard you can move between tools and get support from real teachers.'
+          )}
         </Text>
       </View>
 
@@ -142,13 +167,13 @@ export default function StudentDashboardScreen() {
           style={[styles.actionBtn, styles.actionPrimary]}
           onPress={() => navigation.navigate('MyTeachers')}
         >
-          <Text style={styles.actionBtnText}>View My Teachers</Text>
+          <Text style={styles.actionBtnText}>{t('View My Teachers')}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionBtn, styles.actionSecondary]}
           onPress={() => navigation.navigate('FindTeachers')}
         >
-          <Text style={styles.actionBtnText}>Find a Private Teacher</Text>
+          <Text style={styles.actionBtnText}>{t('Find a Private Teacher')}</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

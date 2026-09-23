@@ -1,0 +1,71 @@
+export const student: Record<string, string> = {
+  // Student dashboard
+  'Welcome back, {name} 👋': 'ברוכים השבים, {name} 👋',
+  'Student': 'תלמיד/ה',
+  'View your upcoming appointments and manage your learning journey.':
+    'צפו בפגישות הקרובות שלכם ונהלו את מסע הלמידה שלכם.',
+  '📅 Upcoming Appointments': '📅 פגישות קרובות',
+  'Teacher': 'מורה',
+  'Today': 'היום',
+  'Appointment with {name}': 'שיעור עם {name}',
+  '📅 Add to Calendar': '📅 הוספה ליומן',
+  '+ {count} more': '+ עוד {count}',
+  'No Upcoming Appointments': 'אין פגישות קרובות',
+  'Your teachers will schedule appointments here.': 'המורים שלכם יקבעו כאן פגישות.',
+  'About SuperStudy': 'אודות SuperStudy',
+  'SuperStudy brings everything you need for school into one place. From this dashboard you can move between tools and get support from real teachers.':
+    'SuperStudy מרכזת את כל מה שצריך ללימודים במקום אחד. מלוח הבקרה הזה אפשר לעבור בין הכלים ולקבל עזרה ממורים אמיתיים.',
+  'View My Teachers': 'למורים שלי',
+  'Find a Private Teacher': 'מציאת מורה פרטי/ת',
+
+  // Shared teacher card
+  'Unnamed Teacher': 'מורה ללא שם',
+  'Submitting...': 'שולח...',
+  'Subjects: {value}': 'מקצועות: {value}',
+  'Units: {value}': 'יחידות לימוד: {value}',
+  'Location: {value}': 'מיקום: {value}',
+  'Experience: {years} years': 'ניסיון: {years} שנים',
+  'Price: ₪{price}/hr': 'מחיר: ₪{price} לשעה',
+  'Availability: {value}': 'זמינות: {value}',
+  '👋 About': '👋 קצת עליי',
+  '📋 Rules': '📋 כללים',
+  'Contact': 'יצירת קשר',
+  '💬 Message on WhatsApp': '💬 שלחו הודעה ב-WhatsApp',
+  'Rating submitted!': 'הדירוג נשלח!',
+  'Failed to submit rating.': 'שליחת הדירוג נכשלה.',
+
+  // Find teachers
+  'Failed to load teachers.': 'טעינת המורים נכשלה.',
+  'You must be logged in as a student to rate.': 'יש להתחבר כתלמיד/ה כדי לדרג.',
+  'You can only rate teachers you have had at least one lesson with.':
+    'אפשר לדרג רק מורים שהיה לכם איתם לפחות שיעור אחד.',
+  'Loading teachers…': 'טוען מורים…',
+  'Find Private Teachers': 'מציאת מורים פרטיים',
+  'Filter by subject and location.': 'סננו לפי מקצוע ומיקום.',
+  'Subject': 'מקצוע',
+  'All': 'הכול',
+  'Location': 'מיקום',
+  'City or area': 'עיר או אזור',
+  'Sort by': 'מיון לפי',
+  '⭐ Top rated': '⭐ הכי מדורגים',
+  'Name (A–Z)': 'שם (א–ת)',
+  'No teachers match your filters.': 'אין מורים שתואמים את הסינון.',
+  'Rate after your first lesson': 'אפשר לדרג אחרי השיעור הראשון',
+  '✓ Copied!': '✓ הועתק!',
+
+  // My teachers
+  'Failed to load your teachers.': 'טעינת המורים שלך נכשלה.',
+  'Leave teacher': 'עזיבת מורה',
+  'Are you sure you want to leave {name}? All lessons will be deleted.':
+    'לעזוב את {name}? כל השיעורים יימחקו.',
+  'Cancel': 'ביטול',
+  'Leave': 'עזיבה',
+  'Left {name}.': 'עזבת את {name}.',
+  'Failed to leave teacher.': 'העזיבה נכשלה.',
+  'Loading your teachers…': 'טוען את המורים שלך…',
+  'Teachers who have added you as their student.': 'מורים שהוסיפו אותך כתלמיד/ה.',
+  'No teachers yet': 'עדיין אין מורים',
+  'Teachers will appear here once they add you.': 'מורים יופיעו כאן אחרי שיוסיפו אותך.',
+  'this teacher': 'המורה הזה/זו',
+  '🚪 Leave Teacher': '🚪 עזיבת המורה',
+};

@@ -17,6 +17,7 @@ import StarRating from '../../components/StarRating';
 import { SUBJECTS } from '../../constants/subjects';
 import { openWhatsApp } from '../../utils/whatsapp';
 import { colors } from '../../theme';
+import { useLanguage } from '../../context/Language';
 
 const SUBJECT_OPTIONS = ['all', ...SUBJECTS];
 
@@ -41,6 +42,7 @@ type Teacher = {
 
 export default function StudentFindTeachersScreen() {
   const { user, profile } = useFirebaseAuth();
+  const { t } = useLanguage();
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -129,11 +131,11 @@ export default function StudentFindTeachersScreen() {
       );
       setTeachers(list);
     } catch {
-      setError('Failed to load teachers.');
+      setError(t('Failed to load teachers.'));
     } finally {
       setLoading(false);
     }
-  }, [fetchTeacherRatings, checkHasLessons, user?.uid]);
+  }, [fetchTeacherRatings, checkHasLessons, user?.uid, t]);
 
   useEffect(() => {
     void fetchTeachers();
@@ -141,12 +143,12 @@ export default function StudentFindTeachersScreen() {
 
   const handleRating = async (teacherId: string, rating: number) => {
     if (!user || profile?.role !== 'student') {
-      setError('You must be logged in as a student to rate.');
+      setError(t('You must be logged in as a student to rate.'));
       return;
     }
     const hasLessons = await checkHasLessons(teacherId, user.uid);
     if (!hasLessons) {
-      setError('You can only rate teachers you have had at least one lesson with.');
+      setError(t('You can only rate teachers you have had at least one lesson with.'));
       return;
     }
     setSubmittingRating(teacherId);
@@ -162,12 +164,12 @@ export default function StudentFindTeachersScreen() {
       setUserRatings((prev) => ({ ...prev, [teacherId]: rating }));
       const { average, count } = await fetchTeacherRatings(teacherId);
       setTeachers((prev) =>
-        prev.map((t) => (t.id === teacherId ? { ...t, averageRating: average, ratingCount: count } : t))
+        prev.map((item) => (item.id === teacherId ? { ...item, averageRating: average, ratingCount: count } : item))
       );
-      setSuccess('Rating submitted!');
+      setSuccess(t('Rating submitted!'));
       setTimeout(() => setSuccess(null), 3000);
     } catch {
-      setError('Failed to submit rating.');
+      setError(t('Failed to submit rating.'));
     } finally {
       setSubmittingRating(null);
     }
@@ -186,11 +188,11 @@ export default function StudentFindTeachersScreen() {
 
   const normalizedLocation = locationQuery.trim().toLowerCase();
   const filteredTeachers = useMemo(() => {
-    const list = teachers.filter((t) => {
-      const teacherSubjects = t.subjects?.length ? t.subjects : t.subject ? [t.subject] : [];
+    const list = teachers.filter((item) => {
+      const teacherSubjects = item.subjects?.length ? item.subjects : item.subject ? [item.subject] : [];
       const matchSubject =
         subject === 'all' || teacherSubjects.some((s) => s.toLowerCase() === subject.toLowerCase());
-      const loc = (t.location || '').trim().toLowerCase();
+      const loc = (item.location || '').trim().toLowerCase();
       const matchLoc =
         !normalizedLocation || loc.startsWith(normalizedLocation) || loc.includes(normalizedLocation);
       return matchSubject && matchLoc;
@@ -208,18 +210,18 @@ export default function StudentFindTeachersScreen() {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Loading teachers…</Text>
+        <Text style={styles.loadingText}>{t('Loading teachers…')}</Text>
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Find Private Teachers</Text>
-      <Text style={styles.subtitle}>Filter by subject and location.</Text>
+      <Text style={styles.title}>{t('Find Private Teachers')}</Text>
+      <Text style={styles.subtitle}>{t('Filter by subject and location.')}</Text>
 
       <View style={styles.filters}>
-        <Text style={styles.filterLabel}>Subject</Text>
+        <Text style={styles.filterLabel}>{t('Subject')}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
           {SUBJECT_OPTIONS.map((s) => (
             <TouchableOpacity
@@ -227,31 +229,31 @@ export default function StudentFindTeachersScreen() {
               style={[styles.chip, subject === s && styles.chipActive]}
               onPress={() => setSubject(s)}
             >
-              <Text style={styles.chipText}>{s === 'all' ? 'All' : s}</Text>
+              <Text style={styles.chipText}>{s === 'all' ? t('All') : t(s)}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
-        <Text style={styles.filterLabel}>Location</Text>
+        <Text style={styles.filterLabel}>{t('Location')}</Text>
         <TextInput
           style={styles.input}
-          placeholder="City or area"
+          placeholder={t('City or area')}
           placeholderTextColor={colors.textDim}
           value={locationQuery}
           onChangeText={setLocationQuery}
         />
-        <Text style={styles.filterLabel}>Sort by</Text>
+        <Text style={styles.filterLabel}>{t('Sort by')}</Text>
         <View style={styles.sortRow}>
           <TouchableOpacity
             style={[styles.chip, sortBy === 'rating' && styles.chipActive]}
             onPress={() => setSortBy('rating')}
           >
-            <Text style={styles.chipText}>⭐ Top rated</Text>
+            <Text style={styles.chipText}>{t('⭐ Top rated')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.chip, sortBy === 'name' && styles.chipActive]}
             onPress={() => setSortBy('name')}
           >
-            <Text style={styles.chipText}>Name (A–Z)</Text>
+            <Text style={styles.chipText}>{t('Name (A–Z)')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -260,11 +262,11 @@ export default function StudentFindTeachersScreen() {
       {success ? <View style={styles.alertSuccess}><Text style={styles.alertText}>{success}</Text></View> : null}
 
       {filteredTeachers.length === 0 ? (
-        <Text style={styles.empty}>No teachers match your filters.</Text>
+        <Text style={styles.empty}>{t('No teachers match your filters.')}</Text>
       ) : (
         filteredTeachers.map((teacher) => (
           <View key={teacher.id} style={styles.card}>
-            <Text style={styles.teacherName}>{teacher.fullName || 'Unnamed Teacher'}</Text>
+            <Text style={styles.teacherName}>{teacher.fullName || t('Unnamed Teacher')}</Text>
             <View style={styles.ratingRow}>
               <StarRating
                 rating={teacher.averageRating || 0}
@@ -280,40 +282,48 @@ export default function StudentFindTeachersScreen() {
                 showCount
               />
               {user && profile?.role === 'student' && !teacher.hasLessonsWithStudent && (
-                <Text style={styles.rateHint}>Rate after your first lesson</Text>
+                <Text style={styles.rateHint}>{t('Rate after your first lesson')}</Text>
               )}
             </View>
             {submittingRating === teacher.id && (
-              <Text style={styles.submitting}>Submitting...</Text>
+              <Text style={styles.submitting}>{t('Submitting...')}</Text>
             )}
-            <Text style={styles.meta}>Subjects: {teacher.subjects?.length ? teacher.subjects.join(', ') : teacher.subject || '—'}</Text>
-            <Text style={styles.meta}>Units: {teacher.points || '—'}</Text>
-            <Text style={styles.meta}>Location: {teacher.location || '—'}</Text>
-            {teacher.experience ? <Text style={styles.meta}>Experience: {teacher.experience} years</Text> : null}
-            {teacher.pricePerHour ? <Text style={styles.meta}>Price: ₪{teacher.pricePerHour}/hr</Text> : null}
-            {teacher.availability ? <Text style={styles.meta}>Availability: {teacher.availability}</Text> : null}
+            <Text style={styles.meta}>
+              {t('Subjects: {value}', {
+                value: teacher.subjects?.length
+                  ? teacher.subjects.map((s) => t(s)).join(', ')
+                  : teacher.subject
+                    ? t(teacher.subject)
+                    : '—',
+              })}
+            </Text>
+            <Text style={styles.meta}>{t('Units: {value}', { value: teacher.points || '—' })}</Text>
+            <Text style={styles.meta}>{t('Location: {value}', { value: teacher.location || '—' })}</Text>
+            {teacher.experience ? <Text style={styles.meta}>{t('Experience: {years} years', { years: teacher.experience })}</Text> : null}
+            {teacher.pricePerHour ? <Text style={styles.meta}>{t('Price: ₪{price}/hr', { price: teacher.pricePerHour })}</Text> : null}
+            {teacher.availability ? <Text style={styles.meta}>{t('Availability: {value}', { value: teacher.availability })}</Text> : null}
             {teacher.bio ? (
               <View style={styles.rulesBox}>
-                <Text style={styles.rulesLabel}>👋 About</Text>
+                <Text style={styles.rulesLabel}>{t('👋 About')}</Text>
                 <Text style={styles.rulesText}>{teacher.bio}</Text>
               </View>
             ) : null}
             {teacher.rules ? (
               <View style={styles.rulesBox}>
-                <Text style={styles.rulesLabel}>📋 Rules</Text>
+                <Text style={styles.rulesLabel}>{t('📋 Rules')}</Text>
                 <Text style={styles.rulesText}>{teacher.rules}</Text>
               </View>
             ) : null}
             {(teacher.email || teacher.phone) && (
               <View style={styles.contactBox}>
-                <Text style={styles.contactLabel}>Contact</Text>
+                <Text style={styles.contactLabel}>{t('Contact')}</Text>
                 {teacher.email && (
                   <Pressable
                     style={[styles.contactBtn, copiedEmail === teacher.email && styles.contactBtnCopied]}
                     onPress={() => copyToClipboard(teacher.email!, 'email')}
                   >
                     <Text style={styles.contactBtnText}>
-                      📧 {copiedEmail === teacher.email ? '✓ Copied!' : teacher.email}
+                      📧 {copiedEmail === teacher.email ? t('✓ Copied!') : teacher.email}
                     </Text>
                   </Pressable>
                 )}
@@ -323,7 +333,7 @@ export default function StudentFindTeachersScreen() {
                     onPress={() => copyToClipboard(teacher.phone!, 'phone')}
                   >
                     <Text style={styles.contactBtnText}>
-                      📞 {copiedPhone === teacher.phone ? '✓ Copied!' : teacher.phone}
+                      📞 {copiedPhone === teacher.phone ? t('✓ Copied!') : teacher.phone}
                     </Text>
                   </Pressable>
                 )}
@@ -337,7 +347,7 @@ export default function StudentFindTeachersScreen() {
                       )
                     }
                   >
-                    <Text style={styles.whatsappBtnText}>💬 שלח/י הודעה ב-WhatsApp</Text>
+                    <Text style={styles.whatsappBtnText}>{t('💬 Message on WhatsApp')}</Text>
                   </Pressable>
                 )}
               </View>

@@ -26,8 +26,11 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useFirebaseAuth } from '../../context/FirebaseAuth';
+import { useLanguage } from '../../context/Language';
 import { openGoogleCalendar } from '../../utils/googleCalendar';
 import { colors } from '../../theme';
+import LearningResumeCard from '../../components/LearningResumeCard';
+import { LearningResume, parseLearningResume } from '../../utils/learningResume';
 
 type Student = { id: string; name: string; grade?: string; notes?: string; email?: string; phone?: string };
 type Appointment = {
@@ -42,6 +45,7 @@ type Appointment = {
 
 export default function TeacherStudentsScreen() {
   const { profile } = useFirebaseAuth();
+  const { t, language } = useLanguage();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -58,6 +62,7 @@ export default function TeacherStudentsScreen() {
   const [appointmentNotes, setAppointmentNotes] = useState('');
   const [isSavingAppointment, setIsSavingAppointment] = useState(false);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [resumes, setResumes] = useState<Record<string, LearningResume | null>>({});
 
   useEffect(() => {
     if (!profile?.uid) return;
@@ -70,7 +75,7 @@ export default function TeacherStudentsScreen() {
             const data = d.data();
             return {
               id: d.id,
-              name: data.name || data.fullName || 'Unnamed',
+              name: data.name || data.fullName || t('Unnamed'),
               grade: data.grade,
               notes: data.notes,
               email: data.email,
@@ -110,9 +115,37 @@ export default function TeacherStudentsScreen() {
     return () => unsub();
   }, [profile?.uid]);
 
+  useEffect(() => {
+    if (!students.length) {
+      setResumes({});
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      students.map(async (s) => {
+        try {
+          const snap = await getDoc(doc(db, 'users', s.id));
+          return [s.id, parseLearningResume(snap.data()?.learningResume)] as const;
+        } catch {
+          return [s.id, null] as const;
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+      const next: Record<string, LearningResume | null> = {};
+      entries.forEach(([id, resume]) => {
+        next[id] = resume;
+      });
+      setResumes(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [students]);
+
   const searchForStudent = async () => {
     if (!searchQuery.trim() || !profile?.uid) {
-      setError('Please enter an email or phone number');
+      setError(t('Please enter an email or phone number'));
       return;
     }
     setIsSearching(true);
@@ -138,7 +171,7 @@ export default function TeacherStudentsScreen() {
         });
       setSearchResults(results);
     } catch {
-      setError('Failed to search.');
+      setError(t('Failed to search.'));
     } finally {
       setIsSearching(false);
     }
@@ -150,7 +183,7 @@ export default function TeacherStudentsScreen() {
     try {
       const existingRef = doc(db, 'users', profile.uid, 'students', studentUser.id);
       if ((await getDoc(existingRef)).exists()) {
-        setError('Student already in your list.');
+        setError(t('Student already in your list.'));
         return;
       }
       await setDoc(existingRef, {
@@ -162,13 +195,13 @@ export default function TeacherStudentsScreen() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      setSuccess(`Added ${studentUser.fullName || studentUser.email}!`);
+      setSuccess(t('Added {name}!', { name: studentUser.fullName || studentUser.email }));
       setSearchQuery('');
       setSearchResults([]);
       setShowAddForm(false);
       setTimeout(() => setSuccess(null), 3000);
     } catch (e: any) {
-      setError(e?.message || 'Failed to add student.');
+      setError(e?.message || t('Failed to add student.'));
     }
   };
 
@@ -184,12 +217,12 @@ export default function TeacherStudentsScreen() {
   const saveAppointment = async () => {
     if (!profile?.uid || !selectedStudent) return;
     if (!appointmentDate || !appointmentTime) {
-      setError('Select date and time.');
+      setError(t('Select date and time.'));
       return;
     }
     const dateTime = new Date(`${appointmentDate}T${appointmentTime}`);
     if (dateTime <= new Date()) {
-      setError('Select a future date and time.');
+      setError(t('Select a future date and time.'));
       return;
     }
     setIsSavingAppointment(true);
@@ -229,17 +262,17 @@ export default function TeacherStudentsScreen() {
         status: 'scheduled',
         createdAt: serverTimestamp(),
       });
-      setSuccess(`Scheduled with ${selectedStudent.name}`);
+      setSuccess(t('Scheduled with {name}', { name: selectedStudent.name }));
       setModalVisible(false);
       setSelectedStudent(null);
       setTimeout(() => setSuccess(null), 3000);
-      Alert.alert('Add to Calendar?', 'Open Google Calendar to add this event?', [
-        { text: 'No' },
+      Alert.alert(t('Add to Calendar?'), t('Open Google Calendar to add this event?'), [
+        { text: t('No') },
         {
-          text: 'Yes',
+          text: t('Yes'),
           onPress: () =>
             openGoogleCalendar({
-              title: `Appointment with ${selectedStudent.name}`,
+              title: t('Appointment with {name}', { name: selectedStudent.name }),
               description: appointmentNotes || '',
               startTime: dateTime,
               endTime: new Date(dateTime.getTime() + 60 * 60 * 1000),
@@ -247,7 +280,7 @@ export default function TeacherStudentsScreen() {
         },
       ]);
     } catch (e: any) {
-      setError(e?.message || 'Failed to save appointment.');
+      setError(e?.message || t('Failed to save appointment.'));
     } finally {
       setIsSavingAppointment(false);
     }
@@ -255,12 +288,12 @@ export default function TeacherStudentsScreen() {
 
   const removeStudent = (studentId: string, studentName: string) => {
     Alert.alert(
-      'Remove student',
-      `Remove ${studentName}? All lessons with this student will be deleted.`,
+      t('Remove student'),
+      t('Remove {name}? All lessons with this student will be deleted.', { name: studentName }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('Cancel'), style: 'cancel' },
         {
-          text: 'Remove',
+          text: t('Remove'),
           style: 'destructive',
           onPress: async () => {
             if (!profile?.uid) return;
@@ -282,10 +315,10 @@ export default function TeacherStudentsScreen() {
               });
               batch.delete(doc(db, 'users', profile.uid, 'students', studentId));
               await batch.commit();
-              setSuccess(`Removed ${studentName}.`);
+              setSuccess(t('Removed {name}.', { name: studentName }));
               setTimeout(() => setSuccess(null), 3000);
             } catch {
-              setError('Failed to remove student.');
+              setError(t('Failed to remove student.'));
             }
           },
         },
@@ -309,7 +342,7 @@ export default function TeacherStudentsScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <Text style={styles.title}>Your Students</Text>
+        <Text style={styles.title}>{t('Your Students')}</Text>
         <TouchableOpacity
           style={[styles.addBtn, showAddForm && styles.addBtnActive]}
           onPress={() => {
@@ -319,7 +352,7 @@ export default function TeacherStudentsScreen() {
             setError(null);
           }}
         >
-          <Text style={styles.addBtnText}>{showAddForm ? 'Cancel' : '+ Add Student'}</Text>
+          <Text style={styles.addBtnText}>{showAddForm ? t('Cancel') : t('+ Add Student')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -333,13 +366,13 @@ export default function TeacherStudentsScreen() {
               style={[styles.toggle, searchType === 'email' && styles.toggleActive]}
               onPress={() => { setSearchType('email'); setSearchResults([]); }}
             >
-              <Text style={styles.toggleText}>Email</Text>
+              <Text style={styles.toggleText}>{t('Email')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.toggle, searchType === 'phone' && styles.toggleActive]}
               onPress={() => { setSearchType('phone'); setSearchResults([]); }}
             >
-              <Text style={styles.toggleText}>Phone</Text>
+              <Text style={styles.toggleText}>{t('Phone')}</Text>
             </TouchableOpacity>
           </View>
           <TextInput
@@ -355,19 +388,19 @@ export default function TeacherStudentsScreen() {
             onPress={searchForStudent}
             disabled={isSearching || !searchQuery.trim()}
           >
-            {isSearching ? <ActivityIndicator color="#fff" /> : <Text style={styles.searchBtnText}>Search</Text>}
+            {isSearching ? <ActivityIndicator color="#fff" /> : <Text style={styles.searchBtnText}>{t('Search')}</Text>}
           </TouchableOpacity>
           {searchResults.length > 0 && (
             <View style={styles.results}>
               {searchResults.map((r) => (
                 <View key={r.id} style={styles.resultRow}>
                   <View>
-                    <Text style={styles.resultName}>{r.fullName || r.name || 'Unnamed'}</Text>
+                    <Text style={styles.resultName}>{r.fullName || r.name || t('Unnamed')}</Text>
                     {r.email ? <Text style={styles.resultMeta}>📧 {r.email}</Text> : null}
                     {r.phone ? <Text style={styles.resultMeta}>📞 {r.phone}</Text> : null}
                   </View>
                   <TouchableOpacity style={styles.addStudentBtn} onPress={() => addStudent(r)}>
-                    <Text style={styles.addStudentBtnText}>Add</Text>
+                    <Text style={styles.addStudentBtnText}>{t('Add')}</Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -377,36 +410,39 @@ export default function TeacherStudentsScreen() {
       )}
 
       {students.length === 0 ? (
-        <Text style={styles.empty}>You don't have any students yet. Add them by searching email or phone.</Text>
+        <Text style={styles.empty}>{t("You don't have any students yet. Add them by searching email or phone.")}</Text>
       ) : (
         students.map((student) => {
           const apts = getStudentAppointments(student.id);
           return (
             <View key={student.id} style={styles.studentCard}>
-              <View style={styles.studentInfo}>
-                <Text style={styles.studentName}>{student.name}</Text>
-                {student.email ? <Text style={styles.studentMeta}>📧 {student.email}</Text> : null}
-                {student.phone ? <Text style={styles.studentMeta}>📞 {student.phone}</Text> : null}
-                {apts.length > 0 && (
-                  <View style={styles.aptsBox}>
-                    <Text style={styles.aptsTitle}>Upcoming:</Text>
-                    {apts.map((apt) => (
-                      <Text key={apt.id} style={styles.aptsItem}>
-                        📅 {apt.dateTime.toDate().toLocaleString()}
-                        {apt.notes ? ` - ${apt.notes}` : ''}
-                      </Text>
-                    ))}
-                  </View>
-                )}
+              <View style={styles.studentTop}>
+                <View style={styles.studentInfo}>
+                  <Text style={styles.studentName}>{student.name}</Text>
+                  {student.email ? <Text style={styles.studentMeta}>📧 {student.email}</Text> : null}
+                  {student.phone ? <Text style={styles.studentMeta}>📞 {student.phone}</Text> : null}
+                  {apts.length > 0 && (
+                    <View style={styles.aptsBox}>
+                      <Text style={styles.aptsTitle}>{t('Upcoming:')}</Text>
+                      {apts.map((apt) => (
+                        <Text key={apt.id} style={styles.aptsItem}>
+                          📅 {apt.dateTime.toDate().toLocaleString(language === 'he' ? 'he-IL' : 'en-US')}
+                          {apt.notes ? ` - ${apt.notes}` : ''}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+                </View>
+                <View style={styles.studentActions}>
+                  <TouchableOpacity style={styles.scheduleBtn} onPress={() => openModal(student)}>
+                    <Text style={styles.scheduleBtnText}>📅 {t('Schedule')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.removeBtn} onPress={() => removeStudent(student.id, student.name)}>
+                    <Text style={styles.removeBtnText}>🗑️ {t('Remove')}</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <View style={styles.studentActions}>
-                <TouchableOpacity style={styles.scheduleBtn} onPress={() => openModal(student)}>
-                  <Text style={styles.scheduleBtnText}>📅 Schedule</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.removeBtn} onPress={() => removeStudent(student.id, student.name)}>
-                  <Text style={styles.removeBtnText}>🗑️ Remove</Text>
-                </TouchableOpacity>
-              </View>
+              <LearningResumeCard resume={resumes[student.id]} audience="teacher" compact />
             </View>
           );
         })
@@ -415,8 +451,8 @@ export default function TeacherStudentsScreen() {
       <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setModalVisible(false)}>
           <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Schedule with {selectedStudent?.name}</Text>
-            <Text style={styles.label}>Date</Text>
+            <Text style={styles.modalTitle}>{t('Schedule with {name}', { name: selectedStudent?.name ?? '' })}</Text>
+            <Text style={styles.label}>{t('Date')}</Text>
             <TextInput
               style={styles.input}
               value={appointmentDate}
@@ -424,7 +460,7 @@ export default function TeacherStudentsScreen() {
               placeholder="YYYY-MM-DD"
               placeholderTextColor={colors.textDim}
             />
-            <Text style={styles.label}>Time</Text>
+            <Text style={styles.label}>{t('Time')}</Text>
             <TextInput
               style={styles.input}
               value={appointmentTime}
@@ -432,26 +468,26 @@ export default function TeacherStudentsScreen() {
               placeholder="HH:MM"
               placeholderTextColor={colors.textDim}
             />
-            <Text style={styles.label}>Notes (optional)</Text>
+            <Text style={styles.label}>{t('Notes (optional)')}</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={appointmentNotes}
               onChangeText={setAppointmentNotes}
-              placeholder="Notes..."
+              placeholder={t('Notes...')}
               placeholderTextColor={colors.textDim}
               multiline
             />
             {error ? <Text style={styles.modalError}>{error}</Text> : null}
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.modalBtnCancel} onPress={() => setModalVisible(false)} disabled={isSavingAppointment}>
-                <Text style={styles.modalBtnText}>Cancel</Text>
+                <Text style={styles.modalBtnText}>{t('Cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtnSave, (!appointmentDate || !appointmentTime || isSavingAppointment) && styles.modalBtnDisabled]}
                 onPress={saveAppointment}
                 disabled={!appointmentDate || !appointmentTime || isSavingAppointment}
               >
-                {isSavingAppointment ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalBtnText}>Schedule</Text>}
+                {isSavingAppointment ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalBtnText}>{t('Schedule')}</Text>}
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -500,7 +536,8 @@ const styles = StyleSheet.create({
   addStudentBtn: { backgroundColor: colors.success, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8 },
   addStudentBtnText: { color: colors.white, fontWeight: '700' },
   empty: { color: colors.textMuted, textAlign: 'center', paddingVertical: 40 },
-  studentCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', padding: 20, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
+  studentCard: { padding: 20, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, marginBottom: 16 },
+  studentTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   studentInfo: { flex: 1 },
   studentName: { fontWeight: '600', color: colors.white, marginBottom: 4 },
   studentMeta: { color: colors.textDim, fontSize: 12, marginTop: 4 },

@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { auth, db } from '../firebase';
-import { onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { onAuthStateChanged, reload, User, signOut } from 'firebase/auth';
+import { needsEmailVerification } from '../auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LearningResume, parseLearningResume } from '../utils/learningResume';
 
 export interface UserProfile {
   uid: string;
@@ -24,12 +26,15 @@ export interface UserProfile {
   pricePerHour?: string;
   /** Teacher: availability text (e.g. days/hours). */
   availability?: string;
+  /** Built from Study Helper chats — for teachers and the AI tutor. */
+  learningResume?: LearningResume | null;
 }
 
 interface AuthContextValue {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
+  profileLoading: boolean;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -45,15 +50,25 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   useEffect(() => {
     let cancelled = false;
-    const unsub = onAuthStateChanged(auth, (u) => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (u && needsEmailVerification(u)) {
+        try {
+          await reload(u);
+        } catch {
+          // Keep the cached user; the verify screen can retry.
+        }
+      }
       if (!cancelled) {
         setUser(u);
         setLoading(false);
       }
     });
-    // If auth doesn't resolve within 8s (e.g. no network), show app anyway so user can try login
+    // If auth/profile don't resolve within 8s (e.g. no network), show app anyway
     const t = setTimeout(() => {
-      if (!cancelled) setLoading(false);
+      if (!cancelled) {
+        setLoading(false);
+        setProfileLoading(false);
+      }
     }, 8000);
     return () => {
       cancelled = true;
@@ -86,7 +101,11 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
       } catch {}
     }
 
-    setProfileLoading(!cacheApplied);
+    // Never flip the global spinner on a background refresh — that remounts
+    // the navigator and can loop on "Loading…".
+    if (!skipCache) {
+      setProfileLoading(!cacheApplied);
+    }
     try {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists()) {
@@ -110,6 +129,7 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
           experience: data.experience,
           pricePerHour: data.pricePerHour,
           availability: data.availability,
+          learningResume: parseLearningResume(data.learningResume),
         };
         setProfile(next);
         await AsyncStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(next));
@@ -173,7 +193,8 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
   const value: AuthContextValue = {
     user,
     profile,
-    loading: loading || profileLoading,
+    loading,
+    profileLoading,
     logout,
     refreshProfile,
   };

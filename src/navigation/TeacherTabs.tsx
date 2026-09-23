@@ -6,12 +6,14 @@ import TeacherDashboardScreen from '../screens/teacher/TeacherDashboardScreen';
 import TeacherStudentsScreen from '../screens/teacher/TeacherStudentsScreen';
 import TeacherProfileScreen from '../screens/teacher/TeacherProfileScreen';
 import { useFirebaseAuth } from '../context/FirebaseAuth';
+import { useLanguage } from '../context/Language';
 import { colors } from '../theme';
 
 const Tab = createBottomTabNavigator();
 
 export default function TeacherTabs() {
   const { logout } = useFirebaseAuth();
+  const { t } = useLanguage();
   const navigation = useNavigation<any>();
 
   return (
@@ -30,7 +32,7 @@ export default function TeacherTabs() {
             }}
             style={styles.logoutBtn}
           >
-            <Text style={styles.logoutText}>Log out</Text>
+            <Text style={styles.logoutText}>{t('Log out')}</Text>
           </TouchableOpacity>
         ),
       }}
@@ -38,23 +40,23 @@ export default function TeacherTabs() {
       <Tab.Screen
         name="TeacherDashboard"
         component={TeacherDashboardScreen}
-        options={{ title: 'Dashboard', tabBarLabel: 'Dashboard' }}
+        options={{ title: t('Dashboard'), tabBarLabel: t('Dashboard') }}
       />
       <Tab.Screen
         name="TeacherStudents"
         component={TeacherStudentsScreen}
-        options={{ title: 'Students', tabBarLabel: 'Students' }}
+        options={{ title: t('Students'), tabBarLabel: t('Students') }}
       />
       <Tab.Screen
         name="TeacherProfile"
         component={TeacherProfileScreen}
-        options={{ title: 'Profile', tabBarLabel: 'Profile' }}
+        options={{ title: t('Profile'), tabBarLabel: t('Profile') }}
       />
     </Tab.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
-  logoutBtn: { marginRight: 16 },
+  logoutBtn: { marginHorizontal: 16 },
   logoutText: { color: colors.dangerLight, fontWeight: '600' },
 });

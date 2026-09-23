@@ -1,0 +1,61 @@
+rules_version = '2';
+
+// SuperStudy Firestore security rules.
+// Covers every collection the app uses:
+//   users/{uid}                         – profiles (student & teacher)
+//   users/{teacherId}/students/{id}     – a teacher's linked students
+//   users/{teacherId}/ratings/{id}      – ratings a student gives a teacher (docId == student uid)
+//   users/{uid}/calendar/{id}           – per-user copy of scheduled lessons
+//   appointments/{id}                   – canonical lesson records
+//
+// Principle: must be signed in for everything; a user may only create/edit
+// their OWN profile (this is what fixes teacher sign-up). Cross-user writes
+// the app genuinely needs (a teacher writing into a student's calendar) are
+// allowed for any signed-in user and can be tightened later.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
+
+    match /users/{userId} {
+      // Any signed-in user can read profiles (students browse teachers,
+      // teachers search students).
+      allow read: if signedIn();
+      // A user may only create/update/delete their OWN profile document —
+      // with ANY fields (student or teacher). THIS FIXES SIGN-UP.
+      allow create, update, delete: if isSelf(userId);
+
+      // Teacher's linked students. The teacher manages the list; a student
+      // may remove their own membership ("Leave teacher").
+      match /students/{studentId} {
+        allow read: if signedIn();
+        allow write: if isSelf(userId) || isSelf(studentId);
+      }
+
+      // Ratings: the rating document id is the rating student's uid, so a
+      // student may only write their own rating.
+      match /ratings/{studentId} {
+        allow read: if signedIn();
+        allow write: if isSelf(studentId);
+      }
+
+      // Per-user calendar copies. A teacher writes into both their own and the
+      // student's calendar when scheduling, so allow any signed-in user.
+      match /calendar/{appointmentId} {
+        allow read: if signedIn();
+        allow write: if signedIn();
+      }
+    }
+
+    // Canonical appointment records.
+    match /appointments/{appointmentId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.teacherId == request.auth.uid;
+      allow update, delete: if signedIn() &&
+        (resource.data.teacherId == request.auth.uid ||
+         resource.data.studentId == request.auth.uid);
+    }
+  }
+}

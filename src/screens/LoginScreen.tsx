@@ -13,28 +13,31 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase';
+import { needsEmailVerification } from '../auth';
 import { colors } from '../theme';
+import { tr, useLanguage } from '../context/Language';
 
 function mapAuthError(code?: string): string {
   switch (code) {
     case 'auth/invalid-email':
-      return 'Invalid email address.';
+      return tr('Invalid email address.');
     case 'auth/user-disabled':
-      return 'This account has been disabled.';
+      return tr('This account has been disabled.');
     case 'auth/user-not-found':
     case 'auth/invalid-credential':
-      return 'Incorrect email or password.';
+      return tr('Incorrect email or password.');
     case 'auth/wrong-password':
-      return 'Incorrect password.';
+      return tr('Incorrect password.');
     case 'auth/too-many-requests':
-      return 'Too many attempts. Try again later.';
+      return tr('Too many attempts. Try again later.');
     default:
-      return 'Unable to sign in. Please try again.';
+      return tr('Unable to sign in. Please try again.');
   }
 }
 
 export default function LoginScreen() {
   const navigation = useNavigation<any>();
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -45,12 +48,16 @@ export default function LoginScreen() {
   const handleEmailLogin = async () => {
     setError(null);
     if (!email || !password) {
-      setError('Please enter email and password.');
+      setError(t('Please enter email and password.'));
       return;
     }
     setIsSubmitting(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      if (needsEmailVerification(cred.user)) {
+        navigation.replace('VerifyEmail');
+        return;
+      }
       goHome();
     } catch (e: any) {
       setError(mapAuthError(e?.code));
@@ -68,9 +75,9 @@ export default function LoginScreen() {
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>Sign in</Text>
+        <Text style={styles.title}>{t('Sign in')}</Text>
 
-        <Text style={styles.label}>Email</Text>
+        <Text style={styles.label}>{t('Email')}</Text>
         <TextInput
           style={styles.input}
           placeholder="name@example.com"
@@ -82,7 +89,7 @@ export default function LoginScreen() {
           autoComplete="email"
         />
 
-        <Text style={styles.label}>Password</Text>
+        <Text style={styles.label}>{t('Password')}</Text>
         <TextInput
           style={styles.input}
           placeholder="••••••••"
@@ -96,6 +103,13 @@ export default function LoginScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <TouchableOpacity
+          style={styles.forgot}
+          onPress={() => navigation.navigate('ForgotPassword', { email: email.trim() })}
+        >
+          <Text style={styles.forgotText}>{t('Forgot password?')}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.btn, isSubmitting && styles.btnDisabled]}
           onPress={handleEmailLogin}
           disabled={isSubmitting}
@@ -103,7 +117,7 @@ export default function LoginScreen() {
           {isSubmitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.btnText}>Sign in with Email</Text>
+            <Text style={styles.btnText}>{t('Sign in with Email')}</Text>
           )}
         </TouchableOpacity>
 
@@ -111,7 +125,7 @@ export default function LoginScreen() {
           style={styles.link}
           onPress={() => navigation.navigate('Signup')}
         >
-          <Text style={styles.linkText}>Don't have an account? Sign up</Text>
+          <Text style={styles.linkText}>{t("Don't have an account? Sign up")}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -134,7 +148,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 16,
   },
-  error: { color: colors.dangerLight, marginBottom: 16 },
+  error: { color: colors.dangerLight, marginBottom: 8 },
+  forgot: { alignSelf: 'flex-end', marginBottom: 8 },
+  forgotText: { color: colors.primaryLight, fontWeight: '600' },
   btn: {
     backgroundColor: '#374151',
     paddingVertical: 14,

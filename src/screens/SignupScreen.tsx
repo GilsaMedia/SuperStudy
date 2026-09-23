@@ -15,40 +15,45 @@ import { useNavigation } from '@react-navigation/native';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { sendVerificationEmail } from '../auth';
 import CitySelector from '../components/CitySelector';
 import { SUBJECTS } from '../constants/subjects';
 import { colors } from '../theme';
+import { tr, useLanguage } from '../context/Language';
 
 const POINTS = ['3', '4', '5'];
 
 function mapAuthError(err: any): string {
   switch (err?.code) {
     case 'auth/email-already-in-use':
-      return 'This email is already in use.';
+      return tr('This email is already in use.');
     case 'auth/invalid-email':
-      return 'Invalid email address.';
+      return tr('Invalid email address.');
     case 'auth/weak-password':
-      return 'Password is too weak.';
+      return tr('Password is too weak.');
     default:
-      return err?.message ? `Signup failed: ${err.message}` : 'Unable to sign up. Please try again.';
+      return err?.message
+        ? tr('Signup failed: {message}', { message: err.message })
+        : tr('Unable to sign up. Please try again.');
   }
 }
 
 function validatePhone(phone: string): { isValid: boolean; error: string | null } {
-  if (!phone?.trim()) return { isValid: false, error: 'Phone number is required.' };
+  if (!phone?.trim()) return { isValid: false, error: tr('Phone number is required.') };
   const cleaned = phone.replace(/[\s\-\(\)\.]/g, '');
   if (cleaned.startsWith('+')) {
     if (!/^\+[1-9]\d{6,14}$/.test(cleaned))
-      return { isValid: false, error: 'Invalid international format (e.g. +1234567890).' };
+      return { isValid: false, error: tr('Invalid international format (e.g. +1234567890).') };
   } else {
     if (!/^\d{10,15}$/.test(cleaned))
-      return { isValid: false, error: 'Use international + or 10–15 digits.' };
+      return { isValid: false, error: tr('Use international + or 10–15 digits.') };
   }
   return { isValid: true, error: null };
 }
 
 export default function SignupScreen() {
   const navigation = useNavigation<any>();
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
@@ -67,36 +72,34 @@ export default function SignupScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [subjectsModalVisible, setSubjectsModalVisible] = useState(false);
 
-  const goHome = () => navigation.replace('Home');
-
   const handleSignup = async () => {
     setError(null);
     if (!selectedRole) {
-      setError('Please select Teacher or Student.');
+      setError(t('Please select Teacher or Student.'));
       return;
     }
     if (!email || !password || !fullName) {
-      setError('Please enter full name, email and password.');
+      setError(t('Please enter full name, email and password.'));
       return;
     }
     const pv = validatePhone(phone);
     if (!pv.isValid) {
       setPhoneError(pv.error);
-      setError(pv.error || 'Invalid phone');
+      setError(pv.error || t('Invalid phone'));
       return;
     }
     if (selectedRole === 'teacher') {
       if (teacherSubjects.length === 0) {
-        setError('Please select at least one subject.');
+        setError(t('Please select at least one subject.'));
         return;
       }
       if (!teacherLocation?.trim()) {
-        setError('Please provide your teaching location (city).');
+        setError(t('Please provide your teaching location (city).'));
         return;
       }
     }
     if (password !== confirm) {
-      setError('Passwords do not match.');
+      setError(t('Passwords do not match.'));
       return;
     }
 
@@ -130,7 +133,12 @@ export default function SignupScreen() {
         },
         app: { onboardingComplete: false, theme: 'dark' },
       }, { merge: true });
-      goHome();
+      try {
+        await sendVerificationEmail(cred.user);
+      } catch {
+        // Account exists; the verify screen can resend the email.
+      }
+      navigation.replace('VerifyEmail');
     } catch (e: any) {
       setError(mapAuthError(e));
     } finally {
@@ -147,35 +155,35 @@ export default function SignupScreen() {
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>Sign up</Text>
+        <Text style={styles.title}>{t('Sign up')}</Text>
 
-        <Text style={styles.label}>Who are you?</Text>
+        <Text style={styles.label}>{t('Who are you?')}</Text>
         <View style={styles.roleRow}>
           <TouchableOpacity
             style={[styles.roleBtn, selectedRole === 'student' && styles.roleBtnActive]}
             onPress={() => setSelectedRole('student')}
           >
-            <Text style={styles.roleBtnText}>🎓 Student</Text>
+            <Text style={styles.roleBtnText}>🎓 {t('Student')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.roleBtn, selectedRole === 'teacher' && styles.roleBtnActive]}
             onPress={() => setSelectedRole('teacher')}
           >
-            <Text style={styles.roleBtnText}>👩‍🏫 Teacher</Text>
+            <Text style={styles.roleBtnText}>👩‍🏫 {t('Teacher')}</Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.label}>Full name</Text>
+        <Text style={styles.label}>{t('Full name')}</Text>
         <TextInput
           style={styles.input}
-          placeholder="Your full name"
+          placeholder={t('Your full name')}
           placeholderTextColor={colors.textDim}
           value={fullName}
           onChangeText={setFullName}
           autoCapitalize="words"
         />
 
-        <Text style={styles.label}>Email</Text>
+        <Text style={styles.label}>{t('Email')}</Text>
         <TextInput
           style={styles.input}
           placeholder="name@example.com"
@@ -186,40 +194,40 @@ export default function SignupScreen() {
           keyboardType="email-address"
         />
 
-        <Text style={styles.label}>Password</Text>
+        <Text style={styles.label}>{t('Password')}</Text>
         <TextInput
           style={styles.input}
-          placeholder="Create a strong password"
+          placeholder={t('Create a strong password')}
           placeholderTextColor={colors.textDim}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
         />
 
-        <Text style={styles.label}>Confirm Password</Text>
+        <Text style={styles.label}>{t('Confirm Password')}</Text>
         <TextInput
           style={styles.input}
-          placeholder="Repeat your password"
+          placeholder={t('Repeat your password')}
           placeholderTextColor={colors.textDim}
           value={confirm}
           onChangeText={setConfirm}
           secureTextEntry
         />
 
-        <Text style={styles.label}>Phone *</Text>
+        <Text style={styles.label}>{t('Phone *')}</Text>
         <TextInput
           style={[styles.input, phoneError && styles.inputError]}
           placeholder="+1234567890"
           placeholderTextColor={colors.textDim}
           value={phone}
-          onChangeText={(t) => { setPhone(t); setPhoneError(null); }}
+          onChangeText={(text) => { setPhone(text); setPhoneError(null); }}
           keyboardType="phone-pad"
         />
         {phoneError ? <Text style={styles.error}>{phoneError}</Text> : null}
 
         {selectedRole === 'teacher' && (
           <>
-            <Text style={styles.label}>Subjects</Text>
+            <Text style={styles.label}>{t('Subjects')}</Text>
             <TouchableOpacity
               style={styles.subjectSelector}
               onPress={() => setSubjectsModalVisible(true)}
@@ -227,11 +235,11 @@ export default function SignupScreen() {
             >
               <Text style={styles.subjectSelectorText}>
                 {teacherSubjects.length
-                  ? teacherSubjects.join(', ')
-                  : 'Select subjects (you can choose multiple)'}
+                  ? teacherSubjects.map((s) => t(s)).join(', ')
+                  : t('Select subjects (you can choose multiple)')}
               </Text>
             </TouchableOpacity>
-            <Text style={styles.label}>Units</Text>
+            <Text style={styles.label}>{t('Units')}</Text>
             <View style={styles.pickerRow}>
               {POINTS.map((p) => (
                 <TouchableOpacity
@@ -243,40 +251,40 @@ export default function SignupScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={styles.label}>Location (city) *</Text>
-            <CitySelector value={teacherLocation} onChange={setTeacherLocation} placeholder="Select a city" />
-            <Text style={styles.label}>Experience (years)</Text>
+            <Text style={styles.label}>{t('Location (city) *')}</Text>
+            <CitySelector value={teacherLocation} onChange={setTeacherLocation} placeholder={t('Select a city')} />
+            <Text style={styles.label}>{t('Experience (years)')}</Text>
             <TextInput
               style={styles.input}
               value={teacherExperience}
               onChangeText={setTeacherExperience}
-              placeholder="e.g. 5"
+              placeholder={t('e.g. 5')}
               placeholderTextColor={colors.textDim}
               keyboardType="number-pad"
             />
-            <Text style={styles.label}>Price per hour (₪)</Text>
+            <Text style={styles.label}>{t('Price per hour (₪)')}</Text>
             <TextInput
               style={styles.input}
               value={teacherPrice}
               onChangeText={setTeacherPrice}
-              placeholder="e.g. 120"
+              placeholder={t('e.g. 120')}
               placeholderTextColor={colors.textDim}
               keyboardType="number-pad"
             />
-            <Text style={styles.label}>Availability</Text>
+            <Text style={styles.label}>{t('Availability')}</Text>
             <TextInput
               style={styles.input}
               value={teacherAvailability}
               onChangeText={setTeacherAvailability}
-              placeholder="e.g. Sun–Thu, afternoons"
+              placeholder={t('e.g. Sun–Thu, afternoons')}
               placeholderTextColor={colors.textDim}
             />
-            <Text style={styles.label}>About me</Text>
+            <Text style={styles.label}>{t('About me')}</Text>
             <TextInput
               style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
               value={teacherBio}
               onChangeText={setTeacherBio}
-              placeholder="A short description students will see"
+              placeholder={t('A short description students will see')}
               placeholderTextColor={colors.textDim}
               multiline
             />
@@ -294,7 +302,7 @@ export default function SignupScreen() {
           >
             <View style={styles.modalOverlay}>
               <View style={styles.modalCard}>
-                <Text style={styles.modalTitle}>Select subjects</Text>
+                <Text style={styles.modalTitle}>{t('Select subjects')}</Text>
                 <ScrollView style={styles.modalList}>
                   {SUBJECTS.map((s) => {
                     const checked = teacherSubjects.includes(s);
@@ -312,7 +320,7 @@ export default function SignupScreen() {
                         <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
                           {checked ? <Text style={styles.checkboxCheck}>✓</Text> : null}
                         </View>
-                        <Text style={styles.checkboxLabel}>{s}</Text>
+                        <Text style={styles.checkboxLabel}>{t(s)}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -322,7 +330,7 @@ export default function SignupScreen() {
                     style={[styles.modalButton, styles.modalButtonPrimary]}
                     onPress={() => setSubjectsModalVisible(false)}
                   >
-                    <Text style={styles.modalButtonText}>Done</Text>
+                    <Text style={styles.modalButtonText}>{t('Done')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -335,11 +343,11 @@ export default function SignupScreen() {
           onPress={handleSignup}
           disabled={isSubmitting}
         >
-          {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Sign up with Email</Text>}
+          {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{t('Sign up with Email')}</Text>}
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.link} onPress={() => navigation.navigate('Login')}>
-          <Text style={styles.linkText}>Already have an account? Sign in</Text>
+          <Text style={styles.linkText}>{t('Already have an account? Sign in')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
