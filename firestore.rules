@@ -9,9 +9,9 @@ rules_version = '2';
 //   appointments/{id}                   – canonical lesson records
 //
 // Principle: must be signed in for everything; a user may only create/edit
-// their OWN profile (this is what fixes teacher sign-up). Cross-user writes
-// the app genuinely needs (a teacher writing into a student's calendar) are
-// allowed for any signed-in user and can be tightened later.
+// their OWN profile. Cross-user writes are limited to what the app does:
+// a teacher links students and writes lesson copies into a student's calendar,
+// a student can leave a teacher and rate a teacher they are linked to.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -27,25 +27,36 @@ service cloud.firestore {
       // with ANY fields (student or teacher). THIS FIXES SIGN-UP.
       allow create, update, delete: if isSelf(userId);
 
-      // Teacher's linked students. The teacher manages the list; a student
-      // may remove their own membership ("Leave teacher").
+      // Teacher's linked students. Only the teacher adds/edits; a student may
+      // remove their own membership ("Leave teacher").
       match /students/{studentId} {
         allow read: if signedIn();
-        allow write: if isSelf(userId) || isSelf(studentId);
+        allow create, update: if isSelf(userId);
+        allow delete: if isSelf(userId) || isSelf(studentId);
       }
 
-      // Ratings: the rating document id is the rating student's uid, so a
-      // student may only write their own rating.
+      // Ratings: the doc id is the rating student's uid. Only a student linked
+      // to this teacher may rate (1-5), and nobody may rate themselves.
       match /ratings/{studentId} {
         allow read: if signedIn();
-        allow write: if isSelf(studentId);
+        allow create, update: if isSelf(studentId) && studentId != userId
+          && request.resource.data.rating is number
+          && request.resource.data.rating >= 1 && request.resource.data.rating <= 5
+          && exists(/databases/$(database)/documents/users/$(userId)/students/$(studentId));
+        allow delete: if isSelf(studentId);
       }
 
-      // Per-user calendar copies. A teacher writes into both their own and the
-      // student's calendar when scheduling, so allow any signed-in user.
+      // Per-user calendar copies. The owner manages their own; a teacher may
+      // write a lesson into a student's calendar; either side of a lesson may
+      // delete its copy (remove student / leave teacher). `resource == null`
+      // lets batch deletes of an already-missing copy succeed.
       match /calendar/{appointmentId} {
-        allow read: if signedIn();
-        allow write: if signedIn();
+        allow read: if isSelf(userId);
+        allow create, update: if isSelf(userId)
+          || (signedIn() && request.resource.data.teacherId == request.auth.uid);
+        allow delete: if isSelf(userId) || (signedIn() && (resource == null
+          || resource.data.teacherId == request.auth.uid
+          || resource.data.studentId == request.auth.uid));
       }
     }
 

@@ -13,6 +13,7 @@ import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { logOut, sendVerificationEmail } from '../auth';
 import { colors } from '../theme';
+import { useFirebaseAuth } from '../context/FirebaseAuth';
 import { tr, useLanguage } from '../context/Language';
 
 const RESEND_COOLDOWN_MS = 60_000;
@@ -31,6 +32,7 @@ function mapSendError(code?: string): string {
 
 export default function VerifyEmailScreen() {
   const navigation = useNavigation<any>();
+  const { refreshProfile } = useFirebaseAuth();
   const { t } = useLanguage();
   const user = auth.currentUser;
   const email = user?.email ?? t('your email');
@@ -91,7 +93,9 @@ export default function VerifyEmailScreen() {
       } catch {
         // Profile write is best-effort; Auth is the source of truth.
       }
-      navigation.replace('Home');
+      // The profile may have been read before signup finished writing it; load it again.
+      await refreshProfile();
+      navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
     } catch {
       setError(t('Could not refresh your account. Check your connection and try again.'));
     } finally {

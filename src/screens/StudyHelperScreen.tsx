@@ -12,10 +12,11 @@ import {
   Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import Constants from 'expo-constants';
+import type Anthropic from '@anthropic-ai/sdk';
 import { useFirebaseAuth } from '../context/FirebaseAuth';
-import { Language, tr, useLanguage } from '../context/Language';
+import { Language, useLanguage } from '../context/Language';
 import { colors } from '../theme';
+import { askClaude, describeClaudeError, isClaudeConfigured } from '../utils/claude';
 import {
   LearningResume,
   fetchLearningResume,
@@ -23,17 +24,43 @@ import {
   updateLearningResumeFromChat,
 } from '../utils/learningResume';
 
-const extra = (Constants.expoConfig as any)?.extra ?? {};
-
 type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
   imageData?: { mimeType: string; data: string } | null;
+  /** UI-only notices (greeting, errors). Never sent to Claude or saved to the resume. */
+  local?: boolean;
 };
 
-async function getGeminiReply(
+const GREETING = "Hi! I'm your AI study tutor. Type a question and I'll guide you step-by-step.";
+
+type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+const SUPPORTED_IMAGE_TYPES: ImageMediaType[] = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
+function toImageMediaType(mimeType: string | undefined): ImageMediaType {
+  const normalized = (mimeType || '').toLowerCase().replace('image/jpg', 'image/jpeg') as ImageMediaType;
+  // The picker re-encodes edited images as JPEG, so JPEG is the safe default.
+  return SUPPORTED_IMAGE_TYPES.includes(normalized) ? normalized : 'image/jpeg';
+}
+
+function toClaudeMessages(messages: ChatMessage[]): Anthropic.Beta.BetaMessageParam[] {
+  return messages
+    .filter((m) => !m.local)
+    .map((m) => {
+      const content: Anthropic.Beta.BetaContentBlockParam[] = [];
+      if (m.imageData) {
+        content.push({
+          type: 'image',
+          source: { type: 'base64', media_type: toImageMediaType(m.imageData.mimeType), data: m.imageData.data },
+        });
+      }
+      content.push({ type: 'text', text: m.content?.trim() || '[Image]' });
+      return { role: m.role, content };
+    });
+}
+
+async function getTutorReply(
   messages: ChatMessage[],
-  apiKey: string,
   resume: LearningResume | null | undefined,
   language: Language
 ): Promise<string> {
@@ -45,50 +72,20 @@ If the student already knows a topic, do not restart from the basics — skip ah
 Always reply in the same language the student writes in. If unsure, reply in ${language === 'he' ? 'Hebrew' : 'English'}.
 ${profileBlock}`;
 
-  const contents = messages
-    .filter((m, i) => !(i === 0 && m.role === 'assistant'))
-    .map((m) => {
-    const parts: any[] = [];
-    if (m.content?.trim()) parts.push({ text: m.content.trim() });
-    if (m.imageData) parts.push({ inlineData: { mimeType: m.imageData.mimeType, data: m.imageData.data } });
-    return {
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: parts.length ? parts : [{ text: '[Image]' }],
-    };
+  return askClaude({
+    // Thinking tokens count toward max_tokens; the 200-word limit is enforced by the prompt.
+    max_tokens: 8000,
+    output_config: { effort: 'low' },
+    system: systemPrompt,
+    messages: toClaudeMessages(messages),
   });
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents,
-        generationConfig: { temperature: 0.3, maxOutputTokens: 400 },
-      }),
-    }
-  );
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || tr('API error: {status}', { status: res.status }));
-  }
-  const json = await res.json();
-  const content = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!content) throw new Error(tr('No content from Gemini'));
-  return content;
 }
 
 export default function StudyHelperScreen() {
   const { user, loading: authLoading, refreshProfile } = useFirebaseAuth();
   const { t, language } = useLanguage();
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: 'assistant',
-      content: "Hi! I'm your AI study tutor. Type a question and I'll guide you step-by-step.",
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([{ role: 'assistant', content: GREETING, local: true }]);
   const [sending, setSending] = useState(false);
   const [attachedImage, setAttachedImage] = useState<{ uri: string; base64: string; mimeType: string } | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -97,6 +94,10 @@ export default function StudyHelperScreen() {
   const resumeRef = useRef<LearningResume | null>(null);
   const updatingResume = useRef(false);
   const pendingResumeMessages = useRef<ChatMessage[] | null>(null);
+  /** Bumped by "New Chat" so a reply that arrives for an old chat is dropped. */
+  const chatIdRef = useRef(0);
+  /** Whether the current chat has already been counted in the resume's sessionCount. */
+  const sessionCountedRef = useRef(false);
 
   useEffect(() => {
     resumeRef.current = resume;
@@ -131,10 +132,11 @@ export default function StudyHelperScreen() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       base64: true,
-      quality: 0.8,
+      // Keep base64 payloads well under Claude's 5 MB per-image limit.
+      quality: 0.6,
     });
     if (result.canceled || !result.assets[0]) {
       setAttachedImage(null);
@@ -150,7 +152,7 @@ export default function StudyHelperScreen() {
     setAttachedImage({
       uri: asset.uri,
       base64,
-      mimeType: asset.mimeType || 'image/jpeg',
+      mimeType: toImageMediaType(asset.mimeType),
     });
     setImageError(null);
   };
@@ -159,14 +161,14 @@ export default function StudyHelperScreen() {
     const trimmed = input.trim();
     const hasImage = !!attachedImage?.base64;
     if ((!trimmed && !hasImage) || sending) return;
-    const apiKey = extra.geminiApiKey ?? process.env.EXPO_PUBLIC_GEMINI_API_KEY;
-    if (!apiKey) {
+    if (!isClaudeConfigured()) {
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
+          local: true,
           content: t(
-            'Gemini API key is missing. Add EXPO_PUBLIC_GEMINI_API_KEY to your app config (e.g. .env or app.json extra).'
+            'Claude API key is missing. Add EXPO_PUBLIC_ANTHROPIC_API_KEY to your app config (e.g. .env or app.json extra).'
           ),
         },
       ]);
@@ -175,18 +177,17 @@ export default function StudyHelperScreen() {
     if (!user) {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: t('Please log in to use the Study Helper.') },
+        { role: 'assistant', local: true, content: t('Please log in to use the Study Helper.') },
       ]);
       return;
     }
 
     const userMessage: ChatMessage = {
       role: 'user',
-      content: trimmed || (hasImage ? '[Image question]' : ''),
-      imageData: hasImage
-        ? { mimeType: attachedImage!.mimeType, data: attachedImage!.base64 }
-        : undefined,
+      content: trimmed || '[Image question]',
+      imageData: hasImage ? { mimeType: attachedImage!.mimeType, data: attachedImage!.base64 } : undefined,
     };
+    const chatId = chatIdRef.current;
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
     setInput('');
@@ -194,56 +195,65 @@ export default function StudyHelperScreen() {
     setSending(true);
 
     try {
-      const reply = await getGeminiReply(nextMessages, apiKey, resumeRef.current, language);
+      const reply = await getTutorReply(nextMessages, resumeRef.current, language);
+      if (chatId !== chatIdRef.current) return; // user started a new chat meanwhile
       const withReply: ChatMessage[] = [...nextMessages, { role: 'assistant', content: reply }];
       setMessages(withReply);
-      if (user.uid) {
-        const persistResume = (chat: ChatMessage[]) => {
-          if (updatingResume.current) {
-            pendingResumeMessages.current = chat;
-            return;
-          }
-          updatingResume.current = true;
-          void updateLearningResumeFromChat({
-            userId: user.uid,
-            apiKey,
-            previous: resumeRef.current,
-            messages: chat.map((m) => ({ role: m.role, content: m.content })),
+
+      const uid = user.uid;
+      const persistResume = (chat: ChatMessage[]) => {
+        if (updatingResume.current) {
+          pendingResumeMessages.current = chat;
+          return;
+        }
+        updatingResume.current = true;
+        const newSession = !sessionCountedRef.current;
+        sessionCountedRef.current = true;
+        void updateLearningResumeFromChat({
+          userId: uid,
+          previous: resumeRef.current,
+          newSession,
+          messages: chat.filter((m) => !m.local).map((m) => ({ role: m.role, content: m.content })),
+        })
+          .then((next) => {
+            if (next) {
+              // Update the ref now so a queued update builds on this resume, not the old one.
+              resumeRef.current = next;
+              setResume(next);
+              void refreshProfile();
+            }
           })
-            .then((next) => {
-              if (next) {
-                setResume(next);
-                void refreshProfile();
-              }
-            })
-            .catch(() => {})
-            .finally(() => {
-              updatingResume.current = false;
-              const queued = pendingResumeMessages.current;
-              pendingResumeMessages.current = null;
-              if (queued) persistResume(queued);
-            });
-        };
-        persistResume(withReply);
-      }
+          .catch(() => {
+            if (newSession) sessionCountedRef.current = false;
+          })
+          .finally(() => {
+            updatingResume.current = false;
+            const queued = pendingResumeMessages.current;
+            pendingResumeMessages.current = null;
+            if (queued) persistResume(queued);
+          });
+      };
+      persistResume(withReply);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : t('Unknown error');
+      if (chatId !== chatIdRef.current) return;
+      const msg = describeClaudeError(err);
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: t('Error: {msg}. Check your API key and try again.', { msg }) },
+        { role: 'assistant', local: true, content: t('Error: {msg}. Check your API key and try again.', { msg }) },
       ]);
     } finally {
-      setSending(false);
+      if (chatId === chatIdRef.current) setSending(false);
     }
   };
 
   const resetChat = () => {
-    setMessages([
-      {
-        role: 'assistant',
-        content: "Hi! I'm your AI study tutor. Type a question and I'll guide you.",
-      },
-    ]);
+    chatIdRef.current += 1;
+    sessionCountedRef.current = false;
+    setSending(false);
+    setInput('');
+    setAttachedImage(null);
+    setImageError(null);
+    setMessages([{ role: 'assistant', content: GREETING, local: true }]);
   };
 
   if (authLoading) {
@@ -289,7 +299,7 @@ export default function StudyHelperScreen() {
         {messages.map((m, i) => (
           <View key={i} style={[styles.msg, m.role === 'user' ? styles.msgUser : styles.msgAssistant]}>
             <Text style={styles.msgRole}>{m.role === 'user' ? t('You') : t('Tutor')}</Text>
-            <Text style={styles.msgText}>{i === 0 && m.role === 'assistant' ? t(m.content) : m.content}</Text>
+            <Text style={styles.msgText}>{m.content === GREETING ? t(m.content) : m.content}</Text>
             {m.imageData && (
               <Image
                 source={{ uri: `data:${m.imageData.mimeType};base64,${m.imageData.data}` }}

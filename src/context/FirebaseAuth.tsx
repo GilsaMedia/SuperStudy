@@ -59,6 +59,9 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
         }
       }
       if (!cancelled) {
+        // Mark the profile as loading in the same render as the new user, so screens
+        // don't briefly see "signed in, profile loaded, no role" and flash "Role Required".
+        setProfileLoading(!!u);
         setUser(u);
         setLoading(false);
       }
@@ -108,6 +111,8 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
     try {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
+      // The user logged out (or switched account) while this was loading.
+      if (auth.currentUser?.uid !== user.uid) return;
       if (userDoc.exists()) {
         const data = userDoc.data();
         const subjects = Array.isArray(data.subjects)
@@ -174,7 +179,8 @@ export const FirebaseAuthProvider: React.FC<{ children: ReactNode }> = ({ childr
         setProfile(null);
       }
     } finally {
-      setProfileLoading(false);
+      // Don't clear the spinner on behalf of an account that is no longer signed in.
+      if (auth.currentUser?.uid === user.uid) setProfileLoading(false);
     }
   }, [user]);
 

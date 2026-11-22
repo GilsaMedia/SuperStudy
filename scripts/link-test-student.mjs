@@ -1,5 +1,5 @@
 /**
- * Links a student to a teacher and runs a short Study Helper (Gemini) session
+ * Links a student to a teacher and runs a short Study Helper (Claude) session
  * so a learning resume is generated — mirrors the app's exact flows.
  *
  * Usage:
@@ -8,6 +8,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import Anthropic from '@anthropic-ai/sdk';
 
 function loadEnvLocal() {
   const raw = readFileSync(resolve(process.cwd(), '.env.local'), 'utf8');
@@ -25,14 +26,17 @@ loadEnvLocal();
 
 const API_KEY = process.env.REACT_APP_FIREBASE_API_KEY || process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
 const PROJECT = process.env.REACT_APP_FIREBASE_PROJECT_ID || process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID;
-const GEMINI_KEY = process.env.REACT_APP_GEMINI_API_KEY || process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+const ANTHROPIC_KEY = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || process.env.REACT_APP_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+const CLAUDE_MODEL = process.env.EXPO_PUBLIC_CLAUDE_MODEL || 'claude-opus-5-5';
 
 const STUDENT_EMAIL = process.env.SUPERSTUDY_STUDENT_EMAIL;
 const STUDENT_PASSWORD = process.env.SUPERSTUDY_STUDENT_PASSWORD;
 const TEACHER_UID = process.argv[2] || 'r0xwUUhH11NjmE8lJC8lSp49XL83'; // Dana Levi (Test)
 
-if (!API_KEY || !PROJECT || !STUDENT_EMAIL || !STUDENT_PASSWORD) {
-  console.error('Missing API key, project id, or SUPERSTUDY_STUDENT_EMAIL / SUPERSTUDY_STUDENT_PASSWORD.');
+if (!API_KEY || !PROJECT || !ANTHROPIC_KEY || !STUDENT_EMAIL || !STUDENT_PASSWORD) {
+  console.error(
+    'Missing Firebase API key, project id, EXPO_PUBLIC_ANTHROPIC_API_KEY, or SUPERSTUDY_STUDENT_EMAIL / SUPERSTUDY_STUDENT_PASSWORD.'
+  );
   process.exit(1);
 }
 
@@ -73,9 +77,12 @@ async function getDoc(token, path) {
   return res.json();
 }
 
-async function patchDoc(token, path, fields, updateMask) {
-  const mask = updateMask ? '&' + updateMask.map((f) => `updateMask.fieldPaths=${f}`).join('&') : '';
-  const res = await fetch(`${FS}/${path}?currentDocument.exists=true${mask}`.replace('?currentDocument.exists=true&', '?'), {
+async function patchDoc(token, path, fields, { updateMask, mustExist = false } = {}) {
+  const params = new URLSearchParams();
+  if (mustExist) params.set('currentDocument.exists', 'true');
+  for (const f of updateMask || []) params.append('updateMask.fieldPaths', f);
+  const query = params.toString();
+  const res = await fetch(`${FS}/${path}${query ? `?${query}` : ''}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ fields }),
@@ -84,15 +91,23 @@ async function patchDoc(token, path, fields, updateMask) {
   return res.json();
 }
 
-async function gemini(body) {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-  );
-  if (!res.ok) throw new Error(`Gemini: ${res.status} ${await res.text()}`);
-  const json = await res.json();
-  const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('No content from Gemini');
+const anthropic = new Anthropic({ apiKey: ANTHROPIC_KEY });
+
+/** Same request shape as src/utils/claude.ts askClaude(). */
+async function claude(params) {
+  const response = await anthropic.beta.messages.create({
+    ...params,
+    model: CLAUDE_MODEL,
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+  });
+  if (response.stop_reason === 'refusal') throw new Error('Claude declined the request');
+  const text = response.content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text)
+    .join('')
+    .trim();
+  if (!text) throw new Error(`No content from Claude (stop_reason=${response.stop_reason})`);
   return text;
 }
 
@@ -114,7 +129,7 @@ console.log(`Linking "${studentName}" to teacher "${teacherName}"…`);
 // 2. Create the teacher→student link (same shape TeacherStudentsScreen writes).
 const now = new Date().toISOString();
 const s = (v) => (v == null ? { nullValue: null } : { stringValue: String(v) });
-await patchDoc(student.idToken, `users/${TEACHER_UID}/students/${studentUid}`.replace('?currentDocument.exists=true', ''), {
+await patchDoc(student.idToken, `users/${TEACHER_UID}/students/${studentUid}`, {
   teacherId: s(TEACHER_UID),
   userId: s(studentUid),
   name: s(studentName),
@@ -142,13 +157,11 @@ console.log('\n--- Study Helper demo session ---');
 for (const turn of studentTurns) {
   messages.push({ role: 'user', content: turn });
   console.log(`\nStudent: ${turn}`);
-  const reply = await gemini({
-    systemInstruction: { parts: [{ text: systemPrompt }] },
-    contents: messages.map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    })),
-    generationConfig: { temperature: 0.3, maxOutputTokens: 400 },
+  const reply = await claude({
+    max_tokens: 8000,
+    output_config: { effort: 'low' },
+    system: systemPrompt,
+    messages: messages.map((m) => ({ role: m.role, content: m.content })),
   });
   messages.push({ role: 'assistant', content: reply });
   console.log(`\nTutor: ${reply}`);
@@ -169,7 +182,7 @@ ${transcript}
 
 Update the resume. Keep facts that are still true. Add or refine based on this chat only. Do not invent subjects that were not discussed. Never include full homework answers.
 
-Return ONLY JSON with this shape:
+Return JSON with this shape:
 {
   "teacherNotes": "4-7 sentences for the teacher: how this student learns better, what they already understand, and where they need help next.",
   "knownTopics": ["short topic the student already handles"],
@@ -177,12 +190,28 @@ Return ONLY JSON with this shape:
   "learningStyle": "1-2 sentences about what kind of hints or explanations work for them"
 }`;
 
-const resumeRaw = await gemini({
-  contents: [{ role: 'user', parts: [{ text: resumePrompt }] }],
-  generationConfig: { temperature: 0.2, maxOutputTokens: 500 },
+const resumeRaw = await claude({
+  max_tokens: 8000,
+  output_config: {
+    effort: 'low',
+    format: {
+      type: 'json_schema',
+      schema: {
+        type: 'object',
+        properties: {
+          teacherNotes: { type: 'string' },
+          knownTopics: { type: 'array', items: { type: 'string' } },
+          needsHelp: { type: 'array', items: { type: 'string' } },
+          learningStyle: { type: 'string' },
+        },
+        required: ['teacherNotes', 'knownTopics', 'needsHelp', 'learningStyle'],
+        additionalProperties: false,
+      },
+    },
+  },
+  messages: [{ role: 'user', content: resumePrompt }],
 });
-const cleaned = resumeRaw.replace(/```json|```/g, '').trim();
-const resume = JSON.parse(cleaned.slice(cleaned.indexOf('{'), cleaned.lastIndexOf('}') + 1));
+const resume = JSON.parse(resumeRaw);
 
 // 5. Save the resume onto the student profile (merge only these fields).
 await patchDoc(
@@ -203,7 +232,7 @@ await patchDoc(
     },
     updatedAt: { timestampValue: new Date().toISOString() },
   },
-  ['learningResume', 'updatedAt']
+  { updateMask: ['learningResume', 'updatedAt'], mustExist: true }
 );
 
 console.log('\n--- Learning resume saved to student profile ---');

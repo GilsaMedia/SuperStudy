@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -96,8 +97,11 @@ export default function StudentFindTeachersScreen() {
     }
   }, [user?.uid]);
 
+  const hasLoadedOnce = useRef(false);
+
   const fetchTeachers = useCallback(async () => {
-    setLoading(true);
+    // Spinner only on the first load; refreshes on tab focus update in place.
+    if (!hasLoadedOnce.current) setLoading(true);
     setError(null);
     try {
       const usersRef = collection(db, 'users');
@@ -130,6 +134,7 @@ export default function StudentFindTeachersScreen() {
         })
       );
       setTeachers(list);
+      hasLoadedOnce.current = true;
     } catch {
       setError(t('Failed to load teachers.'));
     } finally {
@@ -137,9 +142,12 @@ export default function StudentFindTeachersScreen() {
     }
   }, [fetchTeacherRatings, checkHasLessons, user?.uid, t]);
 
-  useEffect(() => {
-    void fetchTeachers();
-  }, [fetchTeachers]);
+  // Tabs stay mounted, so refresh on focus (new links/lessons change who can be rated).
+  useFocusEffect(
+    useCallback(() => {
+      void fetchTeachers();
+    }, [fetchTeachers])
+  );
 
   const handleRating = async (teacherId: string, rating: number) => {
     if (!user || profile?.role !== 'student') {

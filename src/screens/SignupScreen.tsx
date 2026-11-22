@@ -109,7 +109,7 @@ export default function SignupScreen() {
       try {
         await updateProfile(cred.user, { displayName: fullName });
       } catch {}
-      await setDoc(doc(db, 'users', cred.user.uid), {
+      const profileWrite = setDoc(doc(db, 'users', cred.user.uid), {
         uid: cred.user.uid,
         email: cred.user.email,
         fullName,
@@ -133,6 +133,14 @@ export default function SignupScreen() {
         },
         app: { onboardingComplete: false, theme: 'dark' },
       }, { merge: true });
+      try {
+        await profileWrite;
+      } catch (profileError) {
+        // Without a profile the account is stuck ("email already in use" on retry,
+        // "Role Required" on login). Remove the half-created account so signup can be retried.
+        await cred.user.delete().catch(() => {});
+        throw profileError;
+      }
       try {
         await sendVerificationEmail(cred.user);
       } catch {

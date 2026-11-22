@@ -1,12 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  getGeminiApiKey,
-  LearningResume,
-  ResumeText,
-  translateResumeToHebrew,
-} from '../utils/learningResume';
+import { LearningResume, ResumeText, translateResumeToHebrew } from '../utils/learningResume';
+import { isClaudeConfigured } from '../utils/claude';
 import { useLanguage } from '../context/Language';
 import { colors } from '../theme';
 
@@ -24,11 +20,10 @@ async function loadHebrew(resume: LearningResume): Promise<ResumeText> {
   const key = cacheKey(resume);
   const cached = await AsyncStorage.getItem(key).catch(() => null);
   if (cached) return JSON.parse(cached) as ResumeText;
-  const apiKey = getGeminiApiKey();
-  if (!apiKey) throw new Error('Missing Gemini API key');
+  if (!isClaudeConfigured()) throw new Error('Missing Claude API key');
   let pending = inFlight.get(key);
   if (!pending) {
-    pending = translateResumeToHebrew(resume, apiKey).finally(() => inFlight.delete(key));
+    pending = translateResumeToHebrew(resume).finally(() => inFlight.delete(key));
     inFlight.set(key, pending);
   }
   const translated = await pending;

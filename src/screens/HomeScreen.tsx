@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { useFirebaseAuth } from '../context/FirebaseAuth';
 import { useLanguage } from '../context/Language';
 import { needsEmailVerification } from '../auth';
@@ -10,26 +10,18 @@ export default function HomeScreen() {
   const { user, profile, loading, profileLoading } = useFirebaseAuth();
   const { t } = useLanguage();
   const navigation = useNavigation<any>();
+  const isFocused = useIsFocused();
 
   useEffect(() => {
-    if (loading || profileLoading) return;
-    if (needsEmailVerification(user)) {
-      navigation.replace('VerifyEmail');
-      return;
-    }
-    if (profile?.role === 'student') {
-      navigation.replace('StudentTabs');
-      return;
-    }
-    if (profile?.role === 'teacher') {
-      navigation.replace('TeacherTabs');
-      return;
-    }
-    if (user && !profile?.role) {
-      // Has auth but no Firestore role
-      return;
-    }
-  }, [profile, loading, profileLoading, user, navigation]);
+    // Only the visible Home routes; a Home left under Login/Signup must not also navigate.
+    if (!isFocused || loading || profileLoading || !user) return;
+    // reset (not replace) so no stale Home/Login/VerifyEmail stays under the tabs.
+    const go = (name: string) => navigation.reset({ index: 0, routes: [{ name }] });
+    if (needsEmailVerification(user)) go('VerifyEmail');
+    else if (profile?.role === 'student') go('StudentTabs');
+    else if (profile?.role === 'teacher') go('TeacherTabs');
+    // Signed in but no Firestore role: the "Role Required" view below handles it.
+  }, [isFocused, profile, loading, profileLoading, user, navigation]);
 
   if (loading || (user && profileLoading) || needsEmailVerification(user)) {
     return (

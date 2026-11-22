@@ -18,7 +18,10 @@ module.exports = {
     firebaseStorageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
     firebaseMessagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
     firebaseAppId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || process.env.REACT_APP_FIREBASE_APP_ID,
-    // Gemini (optional)
-    geminiApiKey: process.env.EXPO_PUBLIC_GEMINI_API_KEY || process.env.REACT_APP_GEMINI_API_KEY,
+    // Claude / Anthropic (Study Helper + learning resume)
+    anthropicApiKey: process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || process.env.REACT_APP_ANTHROPIC_API_KEY,
+    // Optional: model override and a proxy URL (so the API key does not ship inside the app)
+    claudeModel: process.env.EXPO_PUBLIC_CLAUDE_MODEL,
+    claudeBaseUrl: process.env.EXPO_PUBLIC_CLAUDE_BASE_URL,
   },
 };

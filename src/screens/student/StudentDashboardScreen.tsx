@@ -42,35 +42,46 @@ export default function StudentDashboardScreen() {
     }
     const calendarRef = collection(db, 'users', profile.uid, 'calendar');
     const q = query(calendarRef, orderBy('dateTime', 'asc'));
+    // Snapshots can arrive back to back (cache, then server) while the async link checks
+    // below are still running; only the newest one may update state.
+    let seq = 0;
     const unsub = onSnapshot(
       q,
       async (snapshot) => {
-        const now = new Date();
-        const list: CalendarAppointment[] = [];
-        for (const docSnap of snapshot.docs) {
-          const data = docSnap.data();
-          const aptDate = data.dateTime.toDate();
-          if (data.status !== 'scheduled' || aptDate < now || !data.teacherId) continue;
-          const studentRef = doc(db, 'users', data.teacherId, 'students', profile.uid);
-          const studentDoc = await getDoc(studentRef);
-          if (!studentDoc.exists()) continue;
-          list.push({
-            id: docSnap.id,
-            appointmentId: data.appointmentId,
-            teacherId: data.teacherId,
-            teacherName: data.teacherName,
-            dateTime: data.dateTime,
-            notes: data.notes,
-            status: data.status || 'scheduled',
-          });
+        const mine = ++seq;
+        try {
+          const now = new Date();
+          const list: CalendarAppointment[] = [];
+          for (const docSnap of snapshot.docs) {
+            const data = docSnap.data();
+            if (!data.dateTime?.toDate) continue;
+            const aptDate = data.dateTime.toDate();
+            if (data.status !== 'scheduled' || aptDate < now || !data.teacherId) continue;
+            const studentRef = doc(db, 'users', data.teacherId, 'students', profile.uid);
+            const studentDoc = await getDoc(studentRef).catch(() => null);
+            if (!studentDoc?.exists()) continue;
+            list.push({
+              id: docSnap.id,
+              appointmentId: data.appointmentId,
+              teacherId: data.teacherId,
+              teacherName: data.teacherName,
+              dateTime: data.dateTime,
+              notes: data.notes,
+              status: data.status || 'scheduled',
+            });
+          }
+          list.sort((a, b) => a.dateTime.toMillis() - b.dateTime.toMillis());
+          if (mine === seq) setAppointments(list);
+        } finally {
+          if (mine === seq) setLoading(false);
         }
-        list.sort((a, b) => a.dateTime.toMillis() - b.dateTime.toMillis());
-        setAppointments(list);
-        setLoading(false);
       },
       () => setLoading(false)
     );
-    return () => unsub();
+    return () => {
+      seq = -1; // drop results that land after unmount
+      unsub();
+    };
   }, [profile?.uid]);
 
   useEffect(() => {

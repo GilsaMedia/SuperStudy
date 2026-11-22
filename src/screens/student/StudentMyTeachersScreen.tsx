@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -81,13 +82,16 @@ export default function StudentMyTeachersScreen() {
     []
   );
 
-  useEffect(() => {
+  const hasLoadedOnce = useRef(false);
+
+  const loadTeachers = useCallback(async () => {
     if (!profile?.uid || !user) {
       setLoading(false);
       return;
     }
-    const load = async () => {
-      setLoading(true);
+    {
+      // Spinner only on the first load; later refreshes (tab focus) update in place.
+      if (!hasLoadedOnce.current) setLoading(true);
       setError(null);
       try {
         const usersRef = collection(db, 'users');
@@ -120,17 +124,40 @@ export default function StudentMyTeachersScreen() {
           });
         }
         setTeachers(list);
+        hasLoadedOnce.current = true;
       } catch {
         setError(t('Failed to load your teachers.'));
       } finally {
         setLoading(false);
       }
-    };
-    void load();
+    }
   }, [profile?.uid, user, fetchTeacherRatings, t]);
+
+  // Tabs stay mounted, so reload on focus: a teacher may have added this student meanwhile.
+  useFocusEffect(
+    useCallback(() => {
+      void loadTeachers();
+    }, [loadTeachers])
+  );
+
+  const hasLessonWith = async (teacherId: string, studentId: string): Promise<boolean> => {
+    try {
+      const snap = await getDocs(
+        query(collection(db, 'appointments'), where('teacherId', '==', teacherId), where('studentId', '==', studentId))
+      );
+      return !snap.empty;
+    } catch {
+      return false;
+    }
+  };
 
   const handleRating = async (teacherId: string, rating: number) => {
     if (!user || profile?.role !== 'student') return;
+    // Same rule as Find Teachers: only rate after at least one lesson.
+    if (!(await hasLessonWith(teacherId, user.uid))) {
+      setError(t('You can only rate teachers you have had at least one lesson with.'));
+      return;
+    }
     setSubmittingRating(teacherId);
     setError(null);
     try {

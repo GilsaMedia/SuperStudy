@@ -1,5 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import * as FirebaseAuth from 'firebase/auth';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import Constants from 'expo-constants';
@@ -17,6 +19,22 @@ const firebaseConfig = {
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
 export const firebaseApp = app;
-export const auth = getAuth(app);
+/**
+ * On native, getAuth() keeps the session in memory only, so users were logged out on
+ * every app restart. initializeAuth with AsyncStorage persistence keeps them signed in.
+ * getReactNativePersistence only exists in Firebase's React Native build (not in the typings).
+ */
+function createAuth(): FirebaseAuth.Auth {
+  if (Platform.OS === 'web') return FirebaseAuth.getAuth(app);
+  const getReactNativePersistence = (FirebaseAuth as any).getReactNativePersistence;
+  try {
+    return FirebaseAuth.initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
+  } catch {
+    // Already initialized (e.g. after a fast refresh).
+    return FirebaseAuth.getAuth(app);
+  }
+}
+
+export const auth = createAuth();
 export const db = getFirestore(app);
 export const storage = getStorage(app);

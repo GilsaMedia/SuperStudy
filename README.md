@@ -22,8 +22,16 @@ React Native (Expo) port of the SuperStudy web app. Students can find teachers, 
      - `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
      - `EXPO_PUBLIC_FIREBASE_APP_ID`
 
-   - **Study Helper (optional)**:
-     - `EXPO_PUBLIC_GEMINI_API_KEY` — for the AI study tutor (get from [Google AI Studio](https://makersuite.google.com/app/apikey)).
+   - **Study Helper (Claude)**:
+     - `EXPO_PUBLIC_ANTHROPIC_API_KEY` — API key for the AI study tutor and learning resume. Create one at [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) (needs API credits under Plans & Billing; a Claude.ai Pro/Max subscription does not include API usage).
+     - `EXPO_PUBLIC_CLAUDE_MODEL` — optional model override (default `claude-opus-5-5`).
+     - `EXPO_PUBLIC_CLAUDE_BASE_URL` — optional URL of your own proxy that adds the API key server-side. `EXPO_PUBLIC_*` values are bundled into the app, so anyone with the app can extract a key placed there; for a public release, use a proxy and leave `EXPO_PUBLIC_ANTHROPIC_API_KEY` empty.
+
+   Example `.env.local`:
+
+   ```bash
+   EXPO_PUBLIC_ANTHROPIC_API_KEY=sk-ant-...
+   ```
 
    - **Google Sign-In** (development builds only): In **Expo Go**, only email/password sign-in is shown; the Google button is hidden. To use Google Sign-In, run a **development build** (`npx expo run:ios` or `npx expo run:android`). Then in [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → your **OAuth 2.0 Client ID** (Web application) → **Authorized redirect URIs**, add the exact URI printed in Metro when you open Login (e.g. `superstudy://redirect`).
 
@@ -40,7 +48,7 @@ React Native (Expo) port of the SuperStudy web app. Students can find teachers, 
 ## Features
 
 - **Auth**: Email/password and **Google sign-in** (same Firestore `users` and roles: student/teacher). New Google users get a default student profile.
-- **Students**: Dashboard, Find Teachers (filter by subject/location), My Teachers, Study Helper (Gemini-powered hints).
+- **Students**: Dashboard, Find Teachers (filter by subject/location), My Teachers, Study Helper (Claude-powered hints + a learning resume shared with teachers).
 - **Teachers**: Dashboard, Students (add by email/phone, schedule appointments, remove), Profile (edit subject, location, rules).
 - **Shared**: Star ratings, city selector (Nominatim/Israel), Google Calendar links via `expo-linking`, clipboard for contact info.
 
@@ -51,4 +59,4 @@ React Native (Expo) port of the SuperStudy web app. Students can find teachers, 
 - `src/navigation/` — Stack (Home, Login, Signup, StudyHelper) and tab navigators (Student vs Teacher).
 - `src/screens/` — Home, Login, Signup, Study Helper, student screens, teacher screens.
 - `src/components/` — StarRating, CitySelector.
-- `src/utils/` — googleCalendar (linking), firebase, auth.
+- `src/utils/` — claude (shared Anthropic client), learningResume, googleCalendar (linking), whatsapp.

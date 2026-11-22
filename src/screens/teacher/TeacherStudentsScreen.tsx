@@ -110,7 +110,9 @@ export default function TeacherStudentsScreen() {
             };
           })
         );
-      }
+      },
+      // Fires with permission-denied on logout; ignore instead of throwing "Uncaught Error in snapshot listener".
+      () => {}
     );
     return () => unsub();
   }, [profile?.uid]);
@@ -167,6 +169,8 @@ export default function TeacherStudentsScreen() {
           if (searchType === 'email') return (u.email || '').toLowerCase().includes(lower);
           const phone = (u.phone || '').replace(/\D/g, '');
           const searchPhone = lower.replace(/\D/g, '');
+          // ''.includes('') is true, so without this every student without a phone matched.
+          if (!phone || !searchPhone) return false;
           return phone.includes(searchPhone) || searchPhone.includes(phone);
         });
       setSearchResults(results);
@@ -220,7 +224,17 @@ export default function TeacherStudentsScreen() {
       setError(t('Select date and time.'));
       return;
     }
-    const dateTime = new Date(`${appointmentDate}T${appointmentTime}`);
+    const dateText = appointmentDate.trim();
+    const timeMatch = appointmentTime.trim().match(/^(\d{1,2}):(\d{2})$/);
+    const dateTime = timeMatch
+      ? new Date(`${dateText}T${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`)
+      : new Date(NaN);
+    // Free-text input like "2026-1-5" or "9am" gave an Invalid Date that passed the future check
+    // and then crashed in Timestamp.fromDate.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText) || isNaN(dateTime.getTime())) {
+      setError(t('Select date and time.'));
+      return;
+    }
     if (dateTime <= new Date()) {
       setError(t('Select a future date and time.'));
       return;
@@ -243,8 +257,10 @@ export default function TeacherStudentsScreen() {
       const appointmentsRef = collection(db, 'appointments');
       const newRef = doc(appointmentsRef);
       const appointmentId = newRef.id;
-      await setDoc(newRef, { ...appointmentData, appointmentId });
-      await setDoc(doc(db, 'users', profile.uid, 'calendar', appointmentId), {
+      // One batch, so a failure can't leave an appointment without its calendar copies.
+      const batch = writeBatch(db);
+      batch.set(newRef, { ...appointmentData, appointmentId });
+      batch.set(doc(db, 'users', profile.uid, 'calendar', appointmentId), {
         appointmentId,
         studentId: selectedStudent.id,
         studentName: selectedStudent.name,
@@ -253,7 +269,7 @@ export default function TeacherStudentsScreen() {
         status: 'scheduled',
         createdAt: serverTimestamp(),
       });
-      await setDoc(doc(db, 'users', selectedStudent.id, 'calendar', appointmentId), {
+      batch.set(doc(db, 'users', selectedStudent.id, 'calendar', appointmentId), {
         appointmentId,
         teacherId: profile.uid,
         teacherName,
@@ -262,6 +278,7 @@ export default function TeacherStudentsScreen() {
         status: 'scheduled',
         createdAt: serverTimestamp(),
       });
+      await batch.commit();
       setSuccess(t('Scheduled with {name}', { name: selectedStudent.name }));
       setModalVisible(false);
       setSelectedStudent(null);

@@ -2,8 +2,6 @@ export const helper: Record<string, string> = {
   // Study Helper screen
   "Hi! I'm your AI study tutor. Type a question and I'll guide you step-by-step.":
     'היי! אני מורה הלימוד שלך מבוסס הבינה המלאכותית. אפשר לכתוב שאלה ואדריך אותך שלב אחר שלב.',
-  "Hi! I'm your AI study tutor. Type a question and I'll guide you.":
-    'היי! אני מורה הלימוד שלך מבוסס הבינה המלאכותית. אפשר לכתוב שאלה ואדריך אותך.',
   'Describe a question. We guide — you solve. Your teacher gets a short resume of how you learn and where you need help.':
     'מתארים שאלה. אנחנו מכוונים — ואת/ה פותר/ת. המורה שלך יקבל סיכום קצר על דרך הלמידה שלך ועל הנושאים שבהם צריך עזרה.',
   'Focusing on: {topics}': 'מתמקדים ב: {topics}',
@@ -19,12 +17,10 @@ export const helper: Record<string, string> = {
   'New Chat': 'שיחה חדשה',
   'Permission to access photos is required.': 'נדרשת הרשאת גישה לתמונות.',
   'Could not get image data.': 'לא ניתן לקרוא את נתוני התמונה.',
-  'Gemini API key is missing. Add EXPO_PUBLIC_GEMINI_API_KEY to your app config (e.g. .env or app.json extra).':
-    'חסר מפתח API של Gemini. יש להוסיף את EXPO_PUBLIC_GEMINI_API_KEY להגדרות האפליקציה (למשל ‎.env או extra ב-app.json).',
+  'Claude API key is missing. Add EXPO_PUBLIC_ANTHROPIC_API_KEY to your app config (e.g. .env or app.json extra).':
+    'חסר מפתח API של Claude. יש להוסיף את EXPO_PUBLIC_ANTHROPIC_API_KEY להגדרות האפליקציה (למשל ‎.env או extra ב-app.json).',
   'Unknown error': 'שגיאה לא ידועה',
   'Error: {msg}. Check your API key and try again.': 'שגיאה: {msg}. יש לבדוק את מפתח ה-API ולנסות שוב.',
-  'API error: {status}': 'שגיאת API: {status}',
-  'No content from Gemini': 'לא התקבלה תשובה מ-Gemini',
 
   // Learning resume card
   'Learning resume': 'סיכום למידה',

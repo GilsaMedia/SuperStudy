@@ -1,6 +1,6 @@
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import Constants from 'expo-constants';
 import { db } from '../firebase';
+import { askClaude } from './claude';
 
 /** The AI-written parts of a resume, in one language. */
 export type ResumeText = {
@@ -78,35 +78,39 @@ function parseResumeText(raw: unknown, maxNotes = MAX_NOTES): ResumeText | null 
   };
 }
 
-export function getGeminiApiKey(): string | undefined {
-  const extra = (Constants.expoConfig as any)?.extra ?? {};
-  return extra.geminiApiKey ?? process.env.EXPO_PUBLIC_GEMINI_API_KEY;
-}
+const RESUME_TEXT_PROPERTIES = {
+  teacherNotes: { type: 'string' },
+  knownTopics: { type: 'array', items: { type: 'string' } },
+  needsHelp: { type: 'array', items: { type: 'string' } },
+  learningStyle: { type: 'string' },
+} as const;
 
-async function callGemini(apiKey: string, prompt: string, maxOutputTokens: number): Promise<string> {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens },
-      }),
-    }
-  );
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Resume API error: ${res.status}`);
-  }
-  const json = await res.json();
-  const content = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!content || typeof content !== 'string') throw new Error('No resume content from Gemini');
-  return content;
+const RESUME_TEXT_SCHEMA = {
+  type: 'object',
+  properties: RESUME_TEXT_PROPERTIES,
+  required: ['teacherNotes', 'knownTopics', 'needsHelp', 'learningStyle'],
+  additionalProperties: false,
+};
+
+const RESUME_WITH_HEBREW_SCHEMA = {
+  type: 'object',
+  properties: { ...RESUME_TEXT_PROPERTIES, he: RESUME_TEXT_SCHEMA },
+  required: ['teacherNotes', 'knownTopics', 'needsHelp', 'learningStyle', 'he'],
+  additionalProperties: false,
+};
+
+/** Asks Claude for JSON matching `schema` (structured outputs) and returns the parsed object. */
+async function askClaudeForJson(prompt: string, schema: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+  const content = await askClaude({
+    max_tokens: 8000,
+    output_config: { effort: 'low', format: { type: 'json_schema', schema } },
+    messages: [{ role: 'user', content: prompt }],
+  });
+  return extractJsonObject(content);
 }
 
 /** Translates the AI-written resume text to Hebrew (for resumes saved before `he` existed). */
-export async function translateResumeToHebrew(resume: ResumeText, apiKey: string): Promise<ResumeText> {
+export async function translateResumeToHebrew(resume: ResumeText): Promise<ResumeText> {
   const prompt = `Translate this student learning resume from English to natural, modern Israeli Hebrew for teachers and students.
 Keep the same meaning and the same number of list items, in the same order. Use gender-neutral forms where practical. Keep formulas and proper names as-is.
 
@@ -117,9 +121,8 @@ ${JSON.stringify({
     learningStyle: resume.learningStyle,
   })}
 
-Return ONLY JSON with the same keys: {"teacherNotes": "...", "knownTopics": [...], "needsHelp": [...], "learningStyle": "..."}`;
-  const content = await callGemini(apiKey, prompt, 1200);
-  const parsed = parseResumeText(extractJsonObject(content));
+Return JSON with the same keys: teacherNotes, knownTopics, needsHelp, learningStyle.`;
+  const parsed = parseResumeText(await askClaudeForJson(prompt, RESUME_TEXT_SCHEMA));
   if (!parsed) throw new Error('Could not parse Hebrew resume');
   return parsed;
 }
@@ -168,11 +171,12 @@ function transcriptFromMessages(messages: ChatTurn[]): string {
 
 export async function updateLearningResumeFromChat(options: {
   userId: string;
-  apiKey: string;
   previous: LearningResume | null;
   messages: ChatTurn[];
+  /** True for the first resume update of a chat, so sessionCount counts chats, not messages. */
+  newSession: boolean;
 }): Promise<LearningResume | null> {
-  const { userId, apiKey, previous, messages } = options;
+  const { userId, previous, messages, newSession } = options;
   const transcript = transcriptFromMessages(messages);
   if (!transcript.includes('Student:')) return previous;
 
@@ -195,7 +199,7 @@ ${transcript}
 
 Update the resume. Keep facts that are still true. Add or refine based on this chat only. Do not invent subjects that were not discussed. Never include full homework answers.
 
-Return ONLY JSON with this shape:
+Return JSON with this shape:
 {
   "teacherNotes": "4-7 sentences for the teacher: how this student learns better, what they already understand, and where they need help next.",
   "knownTopics": ["short topic the student already handles"],
@@ -210,9 +214,7 @@ Return ONLY JSON with this shape:
 }
 The top-level fields must be in English. The "he" object is a faithful Hebrew translation of them (gender-neutral where practical).`;
 
-  const content = await callGemini(apiKey, prompt, 1500);
-
-  const parsed = extractJsonObject(content);
+  const parsed = await askClaudeForJson(prompt, RESUME_WITH_HEBREW_SCHEMA);
   if (!parsed) throw new Error('Could not parse learning resume');
 
   const next: LearningResume = {
@@ -223,7 +225,7 @@ The top-level fields must be in English. The "he" object is a faithful Hebrew tr
       typeof parsed.learningStyle === 'string' ? parsed.learningStyle : previous?.learningStyle || '',
       MAX_STYLE
     ),
-    sessionCount: (previous?.sessionCount || 0) + 1,
+    sessionCount: (previous?.sessionCount || 0) + (newSession || !previous ? 1 : 0),
     updatedAtMs: Date.now(),
     he: parseResumeText(parsed.he) ?? undefined,
   };

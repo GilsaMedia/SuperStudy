@@ -43,7 +43,7 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const goHome = () => navigation.replace('Home');
+  const goHome = () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
 
   const handleEmailLogin = async () => {
     setError(null);
